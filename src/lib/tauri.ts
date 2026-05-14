@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
-import { listen, Event } from '@tauri-apps/api/event';
+import { listen } from '@tauri-apps/api/event';
 import { useProgressStore } from '../store/useStore';
+import { queryClient } from '../main';
 
 export interface Image {
   id: number;
@@ -68,10 +69,21 @@ export async function setupTauriListeners() {
   const unlistenProgress = await listen<ScanProgress>('scan:progress', (event) => {
     useProgressStore.getState().setScanning(true);
     useProgressStore.getState().updateProgress(event.payload);
+    
+    // Periodically invalidate photos so they appear during the scan
+    if (event.payload.found > 0 && event.payload.found % 50 === 0) {
+      queryClient.invalidateQueries({ queryKey: ['photos'] });
+      queryClient.invalidateQueries({ queryKey: ['timeline-groups'] });
+    }
   });
 
   const unlistenComplete = await listen<ScanProgress>('scan:complete', (event) => {
     useProgressStore.getState().updateProgress(event.payload);
+    
+    // Invalidate React Query cache so photos appear immediately
+    queryClient.invalidateQueries({ queryKey: ['photos'] });
+    queryClient.invalidateQueries({ queryKey: ['timeline-groups'] });
+    
     setTimeout(() => {
       useProgressStore.getState().setScanning(false);
     }, 3000); // Keep HUD open for 3 seconds after complete

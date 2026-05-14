@@ -23,54 +23,74 @@ pub async fn get_photos_page(
     filters: Option<PhotoFilters>,
     pool: State<'_, DbPool>,
 ) -> Result<PaginatedPhotos, String> {
-    let mut query = String::from(
-        "SELECT * FROM images WHERE 1=1"
-    );
-    let mut args = sqlx::sqlite::SqliteArguments::default();
+    let has_search = filters.as_ref().map_or(false, |f| f.search.as_ref().map_or(false, |s| !s.is_empty()));
+    
+    let mut query_parts: Vec<String> = Vec::new();
+    let mut bind_values: Vec<BindValue> = Vec::new();
 
-    if let Some(c) = cursor {
-        query.push_str(" AND date_taken < ?");
-        sqlx::Arguments::add(&mut args, c);
-    }
-
-    if let Some(f) = filters {
-        if let Some(search) = f.search {
-            if !search.is_empty() {
-                // If FTS5 search is used, we'd join with FTS table
-                query = String::from(
-                    "SELECT i.* FROM images i JOIN images_fts f ON i.id = f.rowid WHERE f.images_fts MATCH ?"
-                );
-                if let Some(c) = cursor {
-                    query.push_str(" AND i.date_taken < ?");
-                }
-                sqlx::Arguments::add(&mut args, search + "*");
-                if let Some(c) = cursor {
-                    sqlx::Arguments::add(&mut args, c);
-                }
-            }
-        } else {
+    if has_search {
+        let search = filters.as_ref().unwrap().search.as_ref().unwrap().clone();
+        query_parts.push("SELECT i.* FROM images i JOIN images_fts f ON i.id = f.rowid WHERE f.images_fts MATCH ?1".into());
+        bind_values.push(BindValue::Str(format!("{}*", search)));
+        
+        if let Some(c) = cursor {
+            query_parts.push(format!(" AND i.id < ?{}", bind_values.len() + 1));
+            bind_values.push(BindValue::Int(c));
+        }
+        query_parts.push(format!(" ORDER BY i.id DESC LIMIT ?{}", bind_values.len() + 1));
+        bind_values.push(BindValue::Int(limit));
+    } else {
+        query_parts.push("SELECT * FROM images WHERE 1=1".into());
+        
+        if let Some(ref f) = filters {
             if let Some(y) = f.year {
-                query.push_str(" AND year = ?");
-                sqlx::Arguments::add(&mut args, y);
+                query_parts.push(format!(" AND year = ?{}", bind_values.len() + 1));
+                bind_values.push(BindValue::Int(y));
             }
             if let Some(m) = f.month {
-                query.push_str(" AND month = ?");
-                sqlx::Arguments::add(&mut args, m);
+                query_parts.push(format!(" AND month = ?{}", bind_values.len() + 1));
+                bind_values.push(BindValue::Int(m));
             }
+        }
+
+        if let Some(c) = cursor {
+            query_parts.push(format!(" AND id < ?{}", bind_values.len() + 1));
+            bind_values.push(BindValue::Int(c));
+        }
+        
+        // Use id DESC so images without date_taken still show up
+        query_parts.push(format!(" ORDER BY COALESCE(date_taken, created_at) DESC, id DESC LIMIT ?{}", bind_values.len() + 1));
+        bind_values.push(BindValue::Int(limit));
+    }
+
+    let full_query = query_parts.join("");
+    
+    // Build and execute the query
+    let mut q = sqlx::query_as::<_, Image>(&full_query);
+    for v in &bind_values {
+        match v {
+            BindValue::Int(i) => q = q.bind(*i),
+            BindValue::Str(s) => q = q.bind(s.as_str()),
         }
     }
 
-    query.push_str(" ORDER BY date_taken DESC LIMIT ?");
-    sqlx::Arguments::add(&mut args, limit);
-
-    let items: Vec<Image> = sqlx::query_as_with(&query, args)
-        .fetch_all(pool.inner())
+    let items: Vec<Image> = q.fetch_all(pool.inner())
         .await
         .map_err(|e| e.to_string())?;
 
-    let next_cursor = items.last().and_then(|img| img.date_taken);
+    // Use id as cursor since date_taken can be NULL
+    let next_cursor = if items.len() as i64 == limit {
+        items.last().map(|img| img.id)
+    } else {
+        None
+    };
 
     Ok(PaginatedPhotos { items, next_cursor })
+}
+
+enum BindValue {
+    Int(i64),
+    Str(String),
 }
 
 #[derive(Serialize)]
