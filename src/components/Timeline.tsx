@@ -1,107 +1,116 @@
-import { useState } from "react";
-import { useTimeline } from "../hooks/useTimeline";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { Lightbox } from "./Lightbox";
+import React, { useMemo } from 'react';
+import { GroupedVirtuoso } from 'react-virtuoso';
+import { usePhotos, useTimelineGroups } from '../hooks/usePhotos';
+import { useStore } from '../store/useStore';
+import { Image } from '../lib/tauri';
+import { convertFileSrc } from '@tauri-apps/api/core';
 
-const MONTH_NAMES = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-];
+export function Timeline() {
+  const { data: groups, isLoading: groupsLoading } = useTimelineGroups();
+  const { data: photos, fetchNextPage, hasNextPage, isFetchingNextPage } = usePhotos();
+  const { setLightboxPhotoId } = useStore();
 
-export const Timeline = () => {
-    const { data: timeline, isLoading, error } = useTimeline();
-    const [lightbox, setLightbox] = useState<{ id: number; path: string; index: number; groupIndex: number } | null>(null);
+  const flattenedPhotos = useMemo(() => {
+    return photos?.pages.flatMap(p => p.items) || [];
+  }, [photos]);
 
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <div className="text-gray-500 dark:text-gray-400">Loading timeline...</div>
+  const groupCounts = useMemo(() => {
+    if (!groups) return [];
+    return groups.map(g => g.count);
+  }, [groups]);
+
+  if (groupsLoading) {
+    return <div className="p-8 text-[var(--color-text-muted)]">Loading timeline...</div>;
+  }
+
+  const monthNames = ["January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"];
+
+  return (
+    <div className="w-full h-full">
+      <GroupedVirtuoso
+        groupCounts={groupCounts}
+        groupContent={(index) => {
+          const group = groups?.[index];
+          if (!group) return null;
+          return (
+            <div className="bg-[var(--color-base)]/90 backdrop-blur-md py-4 px-6 sticky top-0 z-10 border-b border-transparent">
+              <h2 className="text-xl font-bold tracking-tight text-white">
+                {monthNames[group.month - 1]} {group.year}
+              </h2>
             </div>
-        );
-    }
-
-    if (error) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <div className="text-red-500">Error: {error.message}</div>
+          );
+        }}
+        itemContent={(index, groupIndex) => {
+          const photo = flattenedPhotos[index];
+          if (!photo) {
+            // Skeleton while loading
+            return (
+              <div className="p-2 w-full h-48">
+                <div className="w-full h-full bg-white/5 animate-pulse rounded-lg" />
+              </div>
+            );
+          }
+          
+          return (
+            <div className="p-1 inline-block w-1/4 h-64 align-top">
+              <PhotoCard photo={photo} onClick={() => setLightboxPhotoId(photo.id)} />
             </div>
-        );
-    }
-
-    // Flatten photos for lightbox navigation
-    const allPhotos = timeline?.flatMap(group => group.photos) || [];
-
-    const handleNext = () => {
-        if (lightbox) {
-            const flatIndex = allPhotos.findIndex(p => p.id === lightbox.id);
-            if (flatIndex < allPhotos.length - 1) {
-                const next = allPhotos[flatIndex + 1];
-                setLightbox({ ...lightbox, id: next.id, path: next.path });
-            }
-        }
-    };
-
-    const handlePrev = () => {
-        if (lightbox) {
-            const flatIndex = allPhotos.findIndex(p => p.id === lightbox.id);
-            if (flatIndex > 0) {
-                const prev = allPhotos[flatIndex - 1];
-                setLightbox({ ...lightbox, id: prev.id, path: prev.path });
-            }
-        }
-    };
-
-    return (
-        <>
-            <div className="p-4 space-y-8 pb-20">
-                {timeline?.map((group, groupIndex) => (
-                    <div key={`${group.year}-${group.month}`}>
-                        <div className="sticky top-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm py-4 z-20 flex items-baseline gap-3 border-b border-transparent transition-colors">
-                            <h2 className="text-xl font-medium text-gray-900 dark:text-white">
-                                {MONTH_NAMES[group.month - 1]} {group.year}
-                            </h2>
-                            <span className="text-sm text-gray-500 dark:text-gray-400 font-normal">
-                                {group.count} photos
-                            </span>
-                        </div>
-
-                        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1 md:gap-2 mt-2">
-                            {group.photos.map((photo, photoIndex) => {
-                                const thumbUrl = convertFileSrc("", "thumb").replace("thumb://localhost/", "thumb://") + photo.id;
-
-                                return (
-                                    <div
-                                        key={photo.id}
-                                        className="aspect-square bg-gray-200 dark:bg-gray-800 rounded overflow-hidden cursor-pointer photo-hover relative group"
-                                        onClick={() => setLightbox({ id: photo.id, path: photo.path, index: photoIndex, groupIndex })}
-                                    >
-                                        <img
-                                            src={thumbUrl}
-                                            alt={photo.filename}
-                                            className="w-full h-full object-cover transition-transform duration-300"
-                                            loading="lazy"
-                                            onError={(e) => {
-                                                e.currentTarget.src = convertFileSrc(photo.path);
-                                            }}
-                                        />
-                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                ))}
+          );
+        }}
+        endReached={() => {
+          if (hasNextPage && !isFetchingNextPage) {
+            fetchNextPage();
+          }
+        }}
+        // Enable grid layout within Virtuoso
+        components={{
+          List: React.forwardRef(({ style, children, ...props }, ref) => (
+            <div
+              ref={ref}
+              {...props}
+              style={{
+                ...style,
+                display: 'flex',
+                flexWrap: 'wrap',
+                padding: '0 16px',
+              }}
+            >
+              {children}
             </div>
+          )),
+          Item: ({ children, ...props }) => (
+            <div {...props} style={{ margin: 0 }}>
+              {children}
+            </div>
+          )
+        }}
+      />
+    </div>
+  );
+}
 
-            {lightbox && (
-                <Lightbox
-                    imageId={lightbox.id}
-                    imagePath={lightbox.path}
-                    onClose={() => setLightbox(null)}
-                    onNext={allPhotos.findIndex(p => p.id === lightbox.id) < allPhotos.length - 1 ? handleNext : undefined}
-                    onPrev={allPhotos.findIndex(p => p.id === lightbox.id) > 0 ? handlePrev : undefined}
-                />
-            )}
-        </>
-    );
-};
+function PhotoCard({ photo, onClick }: { photo: Image, onClick: () => void }) {
+  const thumbSrc = photo.thumb_256 ? convertFileSrc(photo.thumb_256) : null;
+  
+  return (
+    <div 
+      className="w-full h-full rounded-xl overflow-hidden cursor-pointer group relative bg-white/5 border border-white/5"
+      onClick={onClick}
+    >
+      {thumbSrc ? (
+        <img 
+          src={thumbSrc} 
+          alt={photo.filename}
+          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+          loading="lazy"
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center text-xs text-[var(--color-text-muted)]">
+          No thumb
+        </div>
+      )}
+      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+    </div>
+  );
+}

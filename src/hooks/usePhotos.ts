@@ -1,17 +1,19 @@
-import { useQuery } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { getPhotosPage, getTimelineGroups, PhotoFilters } from '../lib/tauri';
 
-export interface Image {
-    id: number;
-    path: string;
-    filename: string;
+export function usePhotos(filters?: PhotoFilters) {
+  return useInfiniteQuery({
+    queryKey: ['photos', filters],
+    queryFn: ({ pageParam }) => getPhotosPage(pageParam, 100, filters),
+    initialPageParam: null as number | null,
+    getNextPageParam: (lastPage) => lastPage.next_cursor,
+  });
 }
 
-export const usePhotos = (limit: number = 10000, offset: number = 0) => {
-    return useQuery({
-        queryKey: ["photos", limit, offset],
-        queryFn: async () => {
-            return await invoke<Image[]>("get_photos", { limit, offset });
-        },
-    });
-};
+export function useTimelineGroups() {
+  return useQuery({
+    queryKey: ['timeline-groups'],
+    queryFn: getTimelineGroups,
+    staleTime: 60_000,
+  });
+}
