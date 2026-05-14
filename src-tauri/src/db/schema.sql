@@ -1,5 +1,5 @@
 -- Optimized schema
-CREATE TABLE images (
+CREATE TABLE IF NOT EXISTS images (
     id          INTEGER PRIMARY KEY,
     path        TEXT NOT NULL UNIQUE,
     path_hash   INTEGER NOT NULL,          -- xxHash64 of path for fast lookup
@@ -16,25 +16,25 @@ CREATE TABLE images (
     created_at  INTEGER DEFAULT (unixepoch())
 );
 
-CREATE INDEX idx_date_taken ON images(date_taken DESC);
-CREATE INDEX idx_year_month ON images(year, month);
-CREATE INDEX idx_path_hash  ON images(path_hash);
+CREATE INDEX IF NOT EXISTS idx_date_taken ON images(date_taken DESC);
+CREATE INDEX IF NOT EXISTS idx_year_month ON images(year, month);
+CREATE INDEX IF NOT EXISTS idx_path_hash  ON images(path_hash);
 
 -- FTS5 table for fast search
-CREATE VIRTUAL TABLE images_fts USING fts5(
+CREATE VIRTUAL TABLE IF NOT EXISTS images_fts USING fts5(
     filename,
     path,
     content='images',
     content_rowid='id'
 );
 
-CREATE TRIGGER images_ai AFTER INSERT ON images BEGIN
+CREATE TRIGGER IF NOT EXISTS images_ai AFTER INSERT ON images BEGIN
   INSERT INTO images_fts(rowid, filename, path) VALUES (new.id, new.filename, new.path);
 END;
-CREATE TRIGGER images_ad AFTER DELETE ON images BEGIN
+CREATE TRIGGER IF NOT EXISTS images_ad AFTER DELETE ON images BEGIN
   INSERT INTO images_fts(images_fts, rowid, filename, path) VALUES('delete', old.id, old.filename, old.path);
 END;
-CREATE TRIGGER images_au AFTER UPDATE ON images BEGIN
+CREATE TRIGGER IF NOT EXISTS images_au AFTER UPDATE ON images BEGIN
   INSERT INTO images_fts(images_fts, rowid, filename, path) VALUES('delete', old.id, old.filename, old.path);
   INSERT INTO images_fts(rowid, filename, path) VALUES (new.id, new.filename, new.path);
 END;
