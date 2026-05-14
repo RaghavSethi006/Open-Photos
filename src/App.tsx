@@ -1,53 +1,55 @@
-import { useState } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { PhotoGrid } from "./components/PhotoGrid";
-import { Timeline } from "./components/Timeline";
-import { People } from "./components/People";
-import { Header } from "./components/Header";
-import { Sidebar } from "./components/Sidebar";
-import { ThemeProvider } from "./contexts/ThemeContext";
-
-const queryClient = new QueryClient();
-
-function AppContent() {
-  const [view, setView] = useState<"grid" | "timeline" | "people">("timeline");
-
-  const handleScanComplete = () => {
-    queryClient.invalidateQueries({ queryKey: ["photos"] });
-    queryClient.invalidateQueries({ queryKey: ["timeline"] });
-    queryClient.invalidateQueries({ queryKey: ["people"] });
-  };
-
-  return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
-      <Header />
-      <div className="flex-1 flex overflow-hidden">
-        <Sidebar
-          view={view}
-          onViewChange={setView}
-          onScanComplete={handleScanComplete}
-        />
-        <main className="flex-1 overflow-auto bg-white dark:bg-gray-900">
-          {view === "timeline" ? (
-            <Timeline />
-          ) : view === "people" ? (
-            <People />
-          ) : (
-            <PhotoGrid />
-          )}
-        </main>
-      </div>
-    </div>
-  );
-}
+import { useEffect } from 'react';
+import { Sidebar } from './components/Sidebar';
+import { Topbar } from './components/Topbar';
+import { ScanProgressHUD } from './components/ScanProgressHUD';
+import { Timeline } from './components/Timeline';
+import { PhotoGrid } from './components/PhotoGrid';
+import { PhotoLightbox } from './components/PhotoLightbox';
+import { EmptyState } from './components/EmptyState';
+import { setupTauriListeners } from './lib/tauri';
+import { useStore } from './store/useStore';
+import { usePhotos } from './hooks/usePhotos';
+import { useDebounce } from './hooks/useDebounce';
 
 function App() {
+  const { currentView, searchQuery } = useStore();
+  const debouncedSearch = useDebounce(searchQuery, 150);
+  const { data: photos, isLoading } = usePhotos({ search: debouncedSearch });
+
+  const hasPhotos = photos && photos.pages.length > 0 && photos.pages[0].items.length > 0;
+
+  useEffect(() => {
+    let unlisten: () => void;
+    setupTauriListeners().then((cleanup) => {
+      unlisten = cleanup;
+    });
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
+
   return (
-    <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <AppContent />
-      </QueryClientProvider>
-    </ThemeProvider>
+    <div className="flex h-screen w-screen bg-[var(--color-base)] overflow-hidden">
+      <Sidebar />
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+        <Topbar />
+        
+        {/* Main Content Area */}
+        <main className="flex-1 overflow-hidden relative z-0">
+          <div className="absolute inset-0">
+            {currentView === 'timeline' && (hasPhotos ? <Timeline /> : <EmptyState />)}
+            {currentView === 'grid' && (hasPhotos ? <PhotoGrid /> : <EmptyState />)}
+            {currentView === 'map' && <div className="flex items-center justify-center h-full text-[var(--color-text-muted)]">Map View Placeholder</div>}
+            {currentView === 'albums' && <div className="flex items-center justify-center h-full text-[var(--color-text-muted)]">Albums View Placeholder</div>}
+            {currentView === 'favorites' && <div className="flex items-center justify-center h-full text-[var(--color-text-muted)]">Favorites View Placeholder</div>}
+            {currentView === 'years' && <div className="flex items-center justify-center h-full text-[var(--color-text-muted)]">Years View Placeholder</div>}
+            {currentView === 'trash' && <div className="flex items-center justify-center h-full text-[var(--color-text-muted)]">Trash View Placeholder</div>}
+          </div>
+        </main>
+      </div>
+      <ScanProgressHUD />
+      <PhotoLightbox />
+    </div>
   );
 }
 
