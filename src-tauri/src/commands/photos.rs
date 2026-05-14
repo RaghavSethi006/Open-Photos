@@ -23,62 +23,77 @@ pub async fn get_photos_page(
     filters: Option<PhotoFilters>,
     pool: State<'_, DbPool>,
 ) -> Result<PaginatedPhotos, String> {
-    let has_search = filters.as_ref().map_or(false, |f| f.search.as_ref().map_or(false, |s| !s.is_empty()));
-    
-    let mut query_parts: Vec<String> = Vec::new();
-    let mut bind_values: Vec<BindValue> = Vec::new();
+    let has_search = filters.as_ref()
+        .and_then(|f| f.search.as_ref())
+        .map_or(false, |s| !s.is_empty());
 
-    if has_search {
-        let search = filters.as_ref().unwrap().search.as_ref().unwrap().clone();
-        query_parts.push("SELECT i.* FROM images i JOIN images_fts f ON i.id = f.rowid WHERE f.images_fts MATCH ?1".into());
-        bind_values.push(BindValue::Str(format!("{}*", search)));
+    let items: Vec<Image> = if has_search {
+        let search_term = format!("{}*", filters.as_ref().unwrap().search.as_ref().unwrap());
         
         if let Some(c) = cursor {
-            query_parts.push(format!(" AND i.id < ?{}", bind_values.len() + 1));
-            bind_values.push(BindValue::Int(c));
+            sqlx::query_as::<_, Image>(
+                "SELECT i.* FROM images i JOIN images_fts f ON i.id = f.rowid WHERE f.images_fts MATCH ? AND i.id < ? ORDER BY i.id DESC LIMIT ?"
+            )
+            .bind(&search_term)
+            .bind(c)
+            .bind(limit)
+            .fetch_all(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?
+        } else {
+            sqlx::query_as::<_, Image>(
+                "SELECT i.* FROM images i JOIN images_fts f ON i.id = f.rowid WHERE f.images_fts MATCH ? ORDER BY i.id DESC LIMIT ?"
+            )
+            .bind(&search_term)
+            .bind(limit)
+            .fetch_all(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?
         }
-        query_parts.push(format!(" ORDER BY i.id DESC LIMIT ?{}", bind_values.len() + 1));
-        bind_values.push(BindValue::Int(limit));
     } else {
-        query_parts.push("SELECT * FROM images WHERE 1=1".into());
-        
-        if let Some(ref f) = filters {
-            if let Some(y) = f.year {
-                query_parts.push(format!(" AND year = ?{}", bind_values.len() + 1));
-                bind_values.push(BindValue::Int(y));
+        let year_filter = filters.as_ref().and_then(|f| f.year);
+        let month_filter = filters.as_ref().and_then(|f| f.month);
+
+        match (cursor, year_filter, month_filter) {
+            (Some(c), Some(y), Some(m)) => {
+                sqlx::query_as::<_, Image>(
+                    "SELECT * FROM images WHERE id < ? AND year = ? AND month = ? ORDER BY COALESCE(date_taken, created_at) DESC, id DESC LIMIT ?"
+                ).bind(c).bind(y).bind(m).bind(limit)
+                .fetch_all(pool.inner()).await.map_err(|e| e.to_string())?
             }
-            if let Some(m) = f.month {
-                query_parts.push(format!(" AND month = ?{}", bind_values.len() + 1));
-                bind_values.push(BindValue::Int(m));
+            (Some(c), Some(y), None) => {
+                sqlx::query_as::<_, Image>(
+                    "SELECT * FROM images WHERE id < ? AND year = ? ORDER BY COALESCE(date_taken, created_at) DESC, id DESC LIMIT ?"
+                ).bind(c).bind(y).bind(limit)
+                .fetch_all(pool.inner()).await.map_err(|e| e.to_string())?
+            }
+            (Some(c), None, None) => {
+                sqlx::query_as::<_, Image>(
+                    "SELECT * FROM images WHERE id < ? ORDER BY COALESCE(date_taken, created_at) DESC, id DESC LIMIT ?"
+                ).bind(c).bind(limit)
+                .fetch_all(pool.inner()).await.map_err(|e| e.to_string())?
+            }
+            (None, Some(y), Some(m)) => {
+                sqlx::query_as::<_, Image>(
+                    "SELECT * FROM images WHERE year = ? AND month = ? ORDER BY COALESCE(date_taken, created_at) DESC, id DESC LIMIT ?"
+                ).bind(y).bind(m).bind(limit)
+                .fetch_all(pool.inner()).await.map_err(|e| e.to_string())?
+            }
+            (None, Some(y), None) => {
+                sqlx::query_as::<_, Image>(
+                    "SELECT * FROM images WHERE year = ? ORDER BY COALESCE(date_taken, created_at) DESC, id DESC LIMIT ?"
+                ).bind(y).bind(limit)
+                .fetch_all(pool.inner()).await.map_err(|e| e.to_string())?
+            }
+            _ => {
+                sqlx::query_as::<_, Image>(
+                    "SELECT * FROM images ORDER BY COALESCE(date_taken, created_at) DESC, id DESC LIMIT ?"
+                ).bind(limit)
+                .fetch_all(pool.inner()).await.map_err(|e| e.to_string())?
             }
         }
+    };
 
-        if let Some(c) = cursor {
-            query_parts.push(format!(" AND id < ?{}", bind_values.len() + 1));
-            bind_values.push(BindValue::Int(c));
-        }
-        
-        // Use id DESC so images without date_taken still show up
-        query_parts.push(format!(" ORDER BY COALESCE(date_taken, created_at) DESC, id DESC LIMIT ?{}", bind_values.len() + 1));
-        bind_values.push(BindValue::Int(limit));
-    }
-
-    let full_query = query_parts.join("");
-    
-    // Build and execute the query
-    let mut q = sqlx::query_as::<_, Image>(&full_query);
-    for v in &bind_values {
-        match v {
-            BindValue::Int(i) => q = q.bind(*i),
-            BindValue::Str(s) => q = q.bind(s.as_str()),
-        }
-    }
-
-    let items: Vec<Image> = q.fetch_all(pool.inner())
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Use id as cursor since date_taken can be NULL
     let next_cursor = if items.len() as i64 == limit {
         items.last().map(|img| img.id)
     } else {
@@ -86,11 +101,6 @@ pub async fn get_photos_page(
     };
 
     Ok(PaginatedPhotos { items, next_cursor })
-}
-
-enum BindValue {
-    Int(i64),
-    Str(String),
 }
 
 #[derive(Serialize)]
@@ -104,18 +114,12 @@ pub struct TimelineGroup {
 pub async fn get_timeline_groups(
     pool: State<'_, DbPool>,
 ) -> Result<Vec<TimelineGroup>, String> {
-    let query = r#"
-        SELECT year, month, COUNT(*) as count 
-        FROM images 
-        WHERE year IS NOT NULL AND month IS NOT NULL
-        GROUP BY year, month 
-        ORDER BY year DESC, month DESC
-    "#;
-
-    let rows = sqlx::query(query)
-        .fetch_all(pool.inner())
-        .await
-        .map_err(|e| e.to_string())?;
+    let rows = sqlx::query(
+        "SELECT year, month, COUNT(*) as count FROM images WHERE year IS NOT NULL AND month IS NOT NULL GROUP BY year, month ORDER BY year DESC, month DESC"
+    )
+    .fetch_all(pool.inner())
+    .await
+    .map_err(|e| e.to_string())?;
 
     let mut groups = Vec::with_capacity(rows.len());
     for row in rows {

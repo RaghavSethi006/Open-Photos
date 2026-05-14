@@ -2,7 +2,7 @@ use sqlx::sqlite::SqlitePoolOptions;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
-use tauri_applocal_photos_lib::db;
+use tauri_applocal_photos_lib::db::photos::Image;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- Benchmarking Retrieval (Limit 100, Offset 5000) ---");
     let start = Instant::now();
 
-    let photos = sqlx::query_as::<_, db::Image>(
+    let photos = sqlx::query_as::<_, Image>(
         "SELECT id, path, filename FROM images ORDER BY id DESC LIMIT ? OFFSET ?",
     )
     .bind(100)
@@ -86,14 +86,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
 
     // Logic from db::get_timeline
-    let images = sqlx::query_as::<_, db::Image>(
+    let images = sqlx::query_as::<_, Image>(
         "SELECT id, path, filename FROM images WHERE date_taken IS NOT NULL ORDER BY date_taken DESC"
     )
     .fetch_all(&pool)
     .await?;
 
     // Grouping logic (simplified for benchmark)
-    let mut groups: std::collections::HashMap<(i32, i32), Vec<db::Image>> =
+    let mut groups: std::collections::HashMap<(i32, i32), Vec<Image>> =
         std::collections::HashMap::new();
     for img in images {
         // In real app we query date again, but here let's just simulate the grouping overhead

@@ -1,8 +1,6 @@
 use std::path::{Path, PathBuf};
-use std::collections::HashSet;
 use std::time::Instant;
 use std::sync::Arc;
-use crossbeam_channel::{bounded, Sender, Receiver};
 use tauri::{Emitter, Manager};
 use tracing::{info, error};
 
@@ -39,42 +37,42 @@ pub async fn run_scan_pipeline(
         .map_err(|e| e.to_string())?
         .join("thumbnails");
 
-    // Channels
-    let (path_tx, path_rx) = bounded::<PathBuf>(10000);
-    let (worker_tx, worker_rx) = bounded::<(PathBuf, String, String, u64)>(5000);
-    let (db_tx, db_rx) = bounded::<Image>(5000);
-    let (progress_tx, progress_rx) = bounded::<ScanProgress>(100);
-
     let start_time = Instant::now();
-    let app_handle_clone = app_handle.clone();
+    let app_clone = app_handle.clone();
 
-    // Spawn Walker
-    let walker_path = start_path.clone();
-    std::thread::spawn(move || {
-        walk_directory(&walker_path, path_tx);
-    });
+    // Use a tokio channel for the DB writer so we can await receives without blocking
+    let (db_tx, mut db_rx) = tokio::sync::mpsc::channel::<Image>(5000);
 
-    // Spawn Classifier
-    let classifier_hashes = existing_hashes.clone();
-    let classifier_progress_tx = progress_tx.clone();
-    std::thread::spawn(move || {
-        let mut scanned = 0;
-        let mut found = 0;
+    // Spawn the scanning + processing work on a blocking thread pool
+    let scan_app = app_handle.clone();
+    let scan_handle = tokio::task::spawn_blocking(move || {
+        // Phase 1: Walk and classify
+        let (path_tx, path_rx) = crossbeam_channel::bounded::<PathBuf>(10000);
+        
+        let walker_path = start_path.clone();
+        std::thread::spawn(move || {
+            walk_directory(&walker_path, path_tx);
+        });
+
+        // Collect classified files
+        let mut classified_files = Vec::new();
+        let mut scanned: u64 = 0;
+        
         for path in path_rx {
             scanned += 1;
             let current_dir = path.parent().unwrap_or_else(|| Path::new("")).to_string_lossy().to_string();
             
-            if let Some(classified) = classify_file(&path, &classifier_hashes) {
-                found += 1;
-                let _ = worker_tx.send(classified);
+            if let Some(classified) = classify_file(&path, &existing_hashes) {
+                classified_files.push(classified);
             }
 
-            if scanned % 500 == 0 {
-                let _ = classifier_progress_tx.send(ScanProgress {
+            // Emit progress every 100 files for responsiveness
+            if scanned % 100 == 0 {
+                let _ = scan_app.emit("scan:progress", ScanProgress {
                     scanned,
-                    found,
-                    indexed: 0, // updated later
-                    thumbnails_done: 0, // updated later
+                    found: classified_files.len() as u64,
+                    indexed: 0,
+                    thumbnails_done: 0,
                     current_dir,
                     elapsed_ms: start_time.elapsed().as_millis() as u64,
                     estimated_remaining_ms: None,
@@ -82,26 +80,39 @@ pub async fn run_scan_pipeline(
                 });
             }
         }
-    });
 
-    // Spawn Worker Pool (Rayon)
-    let worker_progress_tx = progress_tx.clone();
-    std::thread::spawn(move || {
-        let mut indexed = 0;
-        let mut thumbnails_done = 0;
+        info!("Walk complete. Scanned {} files, found {} images.", scanned, classified_files.len());
 
-        // Use standard rayon global pool
+        // Emit walking done
+        let _ = scan_app.emit("scan:progress", ScanProgress {
+            scanned,
+            found: classified_files.len() as u64,
+            indexed: 0,
+            thumbnails_done: 0,
+            current_dir: "".into(),
+            elapsed_ms: start_time.elapsed().as_millis() as u64,
+            estimated_remaining_ms: None,
+            phase: "Processing".into(),
+        });
+
+        // Phase 2: Process files with rayon (EXIF + thumbnails) and send to DB channel
+        let total_files = classified_files.len();
+        let processed = std::sync::atomic::AtomicU64::new(0);
+        let scan_app2 = scan_app.clone();
+        
         rayon::scope(|s| {
-            for (path, filename, ext, path_hash) in worker_rx {
-                let db_tx_clone = db_tx.clone();
-                let base_thumb_dir_clone = base_thumb_dir.clone();
+            for (path, filename, ext, path_hash) in classified_files {
+                let db_tx = db_tx.clone();
+                let base_thumb_dir = base_thumb_dir.clone();
+                let processed = &processed;
+                let scan_app2 = &scan_app2;
+                let start_time = &start_time;
                 
                 s.spawn(move |_| {
                     let exif_data = extract_exif(&path);
-                    
                     let size_bytes = std::fs::metadata(&path).map(|m| m.len() as i64).ok();
                     
-                    let (thumb_256, thumb_480) = match generate_thumbnails(&path, &base_thumb_dir_clone, path_hash) {
+                    let (thumb_256, thumb_480) = match generate_thumbnails(&path, &base_thumb_dir, path_hash) {
                         Ok((t256, t480)) => (Some(t256), Some(t480)),
                         Err(e) => {
                             error!("Error generating thumb for {:?}: {}", path, e);
@@ -110,15 +121,15 @@ pub async fn run_scan_pipeline(
                     };
 
                     let image = Image {
-                        id: 0, // Set by DB
+                        id: 0,
                         path: path.to_string_lossy().into_owned(),
                         path_hash: path_hash as i64,
                         filename,
                         ext,
                         size_bytes,
                         date_taken: exif_data.date_taken,
-                        year: None,  // GENERATED ALWAYS
-                        month: None, // GENERATED ALWAYS
+                        year: None,
+                        month: None,
                         width: exif_data.width,
                         height: exif_data.height,
                         thumb_256,
@@ -126,29 +137,54 @@ pub async fn run_scan_pipeline(
                         created_at: None,
                     };
 
-                    let _ = db_tx_clone.send(image);
+                    let _ = db_tx.blocking_send(image);
+                    
+                    let done = processed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    if done % 20 == 0 {
+                        let _ = scan_app2.emit("scan:progress", ScanProgress {
+                            scanned,
+                            found: total_files as u64,
+                            indexed: done,
+                            thumbnails_done: done,
+                            current_dir: "".into(),
+                            elapsed_ms: start_time.elapsed().as_millis() as u64,
+                            estimated_remaining_ms: if done > 0 {
+                                let rate = start_time.elapsed().as_millis() as f64 / done as f64;
+                                Some(((total_files as u64 - done) as f64 * rate) as u64)
+                            } else {
+                                None
+                            },
+                            phase: "Processing".into(),
+                        });
+                    }
                 });
             }
         });
+        // db_tx is dropped here when rayon scope ends, closing the channel
     });
 
-    // Spawn Progress Emitter
-    tokio::spawn(async move {
-        for progress in progress_rx {
-            let _ = app_handle_clone.emit("scan:progress", progress);
-        }
-    });
+    // Batch DB Writer — runs on the async runtime, receives from tokio channel
+    let mut batch = Vec::with_capacity(100);
+    let mut total_inserted: usize = 0;
 
-    // Batch DB Writer (Runs in current async context)
-    let mut batch = Vec::with_capacity(500);
-    let mut total_inserted = 0;
-
-    for image in db_rx {
+    while let Some(image) = db_rx.recv().await {
         batch.push(image);
-        if batch.len() >= 500 {
+        if batch.len() >= 100 {
             insert_batch(&pool, &batch).await?;
             total_inserted += batch.len();
             batch.clear();
+            
+            // Emit progress for DB writes
+            let _ = app_clone.emit("scan:progress", ScanProgress {
+                scanned: 0,
+                found: total_inserted as u64,
+                indexed: total_inserted as u64,
+                thumbnails_done: total_inserted as u64,
+                current_dir: "".into(),
+                elapsed_ms: start_time.elapsed().as_millis() as u64,
+                estimated_remaining_ms: None,
+                phase: "Indexing".into(),
+            });
         }
     }
     
@@ -156,6 +192,9 @@ pub async fn run_scan_pipeline(
         insert_batch(&pool, &batch).await?;
         total_inserted += batch.len();
     }
+
+    // Wait for scan threads to finish
+    let _ = scan_handle.await;
 
     // Final completion event
     let _ = app_handle.emit("scan:complete", ScanProgress {

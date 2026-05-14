@@ -4,8 +4,8 @@ interface StoreState {
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
   
-  currentView: 'timeline' | 'grid' | 'map';
-  setCurrentView: (view: 'timeline' | 'grid' | 'map') => void;
+  currentView: 'timeline' | 'grid' | 'map' | 'albums' | 'favorites' | 'years' | 'trash';
+  setCurrentView: (view: 'timeline' | 'grid' | 'map' | 'albums' | 'favorites' | 'years' | 'trash') => void;
   
   selectedPhotos: Set<number>;
   togglePhotoSelection: (id: number) => void;
