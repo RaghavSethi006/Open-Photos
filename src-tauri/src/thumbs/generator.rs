@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use image::{imageops::FilterType, ImageReader};
+use image::{imageops::FilterType, io::Reader as ImageReader};
 use std::fs;
 use memmap2::Mmap;
 

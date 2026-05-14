@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::time::Instant;
 use std::sync::Arc;
 use crossbeam_channel::{bounded, Sender, Receiver};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tracing::{info, error};
 
 use crate::db::{DbPool, photos::{Image, load_existing_hashes}};

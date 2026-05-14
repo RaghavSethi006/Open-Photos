@@ -4,6 +4,7 @@ pub mod metadata;
 pub mod scanner;
 pub mod thumbs;
 
+use tauri::Manager;
 use db::init_db;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
