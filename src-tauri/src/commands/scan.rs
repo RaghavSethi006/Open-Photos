@@ -1,20 +1,12 @@
-use tauri::{AppHandle, State, command};
-use std::path::PathBuf;
-use crate::db::DbPool;
-use crate::scanner::pipeline::run_scan_pipeline;
+use crate::scanner::organizer::{organize_media, OrganizeOptions, OrganizeSummary};
+use tauri::{command, AppHandle};
 
 #[command]
-pub async fn start_scan(
-    path: String,
+pub async fn run_media_organizer(
+    options: OrganizeOptions,
     app_handle: AppHandle,
-    pool: State<'_, DbPool>,
-) -> Result<(), String> {
-    let pool_clone = pool.inner().clone();
-    
-    // Run the pipeline asynchronously so we don't block the Tauri command handler
-    tokio::spawn(async move {
-        let _ = run_scan_pipeline(PathBuf::from(path), app_handle, pool_clone).await;
-    });
-
-    Ok(())
+) -> Result<OrganizeSummary, String> {
+    tokio::task::spawn_blocking(move || organize_media(options, app_handle))
+        .await
+        .map_err(|e| e.to_string())?
 }

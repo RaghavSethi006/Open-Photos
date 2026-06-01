@@ -1,3 +1,1 @@
-pub mod pipeline;
-pub mod walker;
-pub mod classifier;
+pub mod organizer;
