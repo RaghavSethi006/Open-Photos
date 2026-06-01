@@ -14,6 +14,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::scan::run_media_organizer,
+            commands::duplicates::scan_duplicates,
+            commands::duplicates::resolve_duplicates,
+            commands::photos::list_photos,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
