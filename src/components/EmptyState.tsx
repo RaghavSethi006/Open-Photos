@@ -1,22 +1,9 @@
-import { open } from '@tauri-apps/plugin-dialog';
-import { startScan } from '../lib/tauri';
 import { ImagePlus } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useStore } from '../store/useStore';
 
 export function EmptyState() {
-  const handleAddFolder = async () => {
-    try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-      });
-      if (selected && typeof selected === 'string') {
-        await startScan(selected);
-      }
-    } catch (e) {
-      console.error("Failed to open dialog or start scan:", e);
-    }
-  };
+  const { setCurrentView } = useStore();
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center p-8">
@@ -37,10 +24,10 @@ export function EmptyState() {
         </div>
 
         <button 
-          onClick={handleAddFolder}
+          onClick={() => setCurrentView('scan')}
           className="bg-[var(--color-primary)] text-white font-medium px-6 py-3 rounded-xl hover:bg-indigo-400 interactive shadow-lg shadow-[var(--color-primary)]/20"
         >
-          Add Your Photos
+          Open Scan Tool
         </button>
       </motion.div>
     </div>

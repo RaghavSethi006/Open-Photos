@@ -5,6 +5,16 @@ import { motion } from 'framer-motion';
 export function Topbar() {
   const { currentView, setCurrentView, searchQuery, setSearchQuery } = useStore();
 
+  if (currentView === 'scan') {
+    return (
+      <div className="h-14 flex items-center justify-between px-6 shrink-0 relative z-10 titlebar-drag">
+        <div className="titlebar-nodrag">
+          <h1 className="text-sm font-semibold text-white text-left">Scan</h1>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-14 flex items-center justify-between px-6 shrink-0 relative z-10 titlebar-drag">
       <div className="flex-1 max-w-md titlebar-nodrag">

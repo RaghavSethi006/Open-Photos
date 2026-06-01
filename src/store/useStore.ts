@@ -4,15 +4,8 @@ interface StoreState {
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
   
-  currentView: 'timeline' | 'grid' | 'map' | 'albums' | 'favorites' | 'years' | 'trash';
-  setCurrentView: (view: 'timeline' | 'grid' | 'map' | 'albums' | 'favorites' | 'years' | 'trash') => void;
-  
-  selectedPhotos: Set<number>;
-  togglePhotoSelection: (id: number) => void;
-  clearSelection: () => void;
-  
-  lightboxPhotoId: number | null;
-  setLightboxPhotoId: (id: number | null) => void;
+  currentView: 'timeline' | 'grid' | 'map' | 'albums' | 'favorites' | 'years' | 'trash' | 'scan';
+  setCurrentView: (view: StoreState['currentView']) => void;
   
   searchQuery: string;
   setSearchQuery: (q: string) => void;
@@ -22,23 +15,8 @@ export const useStore = create<StoreState>((set) => ({
   isSidebarOpen: true,
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   
-  currentView: 'timeline',
+  currentView: 'scan',
   setCurrentView: (view) => set({ currentView: view }),
-  
-  selectedPhotos: new Set(),
-  togglePhotoSelection: (id) => set((state) => {
-    const newSet = new Set(state.selectedPhotos);
-    if (newSet.has(id)) {
-      newSet.delete(id);
-    } else {
-      newSet.add(id);
-    }
-    return { selectedPhotos: newSet };
-  }),
-  clearSelection: () => set({ selectedPhotos: new Set() }),
-  
-  lightboxPhotoId: null,
-  setLightboxPhotoId: (id) => set({ lightboxPhotoId: id }),
   
   searchQuery: '',
   setSearchQuery: (searchQuery) => set({ searchQuery }),
@@ -55,6 +33,10 @@ interface ProgressState {
   elapsed_ms: number;
   estimated_remaining_ms: number | null;
   phase: string;
+  copied: number;
+  moved: number;
+  skipped: number;
+  renamedDuplicates: number;
   updateProgress: (progress: Partial<ProgressState>) => void;
   setScanning: (isScanning: boolean) => void;
 }
@@ -69,6 +51,10 @@ export const useProgressStore = create<ProgressState>((set) => ({
   elapsed_ms: 0,
   estimated_remaining_ms: null,
   phase: 'Idle',
+  copied: 0,
+  moved: 0,
+  skipped: 0,
+  renamedDuplicates: 0,
   updateProgress: (p) => set((state) => ({ ...state, ...p })),
   setScanning: (isScanning) => set({ isScanning }),
 }));
