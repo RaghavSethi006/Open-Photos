@@ -2,8 +2,9 @@ import { useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
 import { ScanProgressHUD } from './components/ScanProgressHUD';
-import { EmptyState } from './components/EmptyState';
 import { ScanPage } from './components/ScanPage';
+import { DuplicatesPage } from './components/DuplicatesPage';
+import { PhotosPage } from './components/PhotosPage';
 import { setupTauriListeners } from './lib/tauri';
 import { useStore } from './store/useStore';
 
@@ -30,8 +31,9 @@ function App() {
         <main className="flex-1 overflow-hidden relative z-0">
           <div className="absolute inset-0">
             {currentView === 'scan' && <ScanPage />}
-            {currentView === 'timeline' && <EmptyState />}
-            {currentView === 'grid' && <EmptyState />}
+            {currentView === 'duplicates' && <DuplicatesPage />}
+            {currentView === 'timeline' && <PhotosPage />}
+            {currentView === 'grid' && <PhotosPage />}
             {currentView === 'map' && <div className="flex items-center justify-center h-full text-[var(--color-text-muted)]">Map View Placeholder</div>}
             {currentView === 'albums' && <div className="flex items-center justify-center h-full text-[var(--color-text-muted)]">Albums View Placeholder</div>}
             {currentView === 'favorites' && <div className="flex items-center justify-center h-full text-[var(--color-text-muted)]">Favorites View Placeholder</div>}

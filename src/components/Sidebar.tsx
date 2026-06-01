@@ -1,5 +1,5 @@
 import { useStore } from '../store/useStore';
-import { Library, Calendar, FolderHeart, Star, Trash2, PanelLeft, ScanLine } from 'lucide-react';
+import { Library, Calendar, FolderHeart, Star, Trash2, PanelLeft, ScanLine, CopyMinus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export function Sidebar() {
@@ -15,6 +15,7 @@ export function Sidebar() {
 
   const tools = [
     { id: 'scan', label: 'Scan', icon: ScanLine },
+    { id: 'duplicates', label: 'Delete Duplicates', icon: CopyMinus },
   ];
 
   return (

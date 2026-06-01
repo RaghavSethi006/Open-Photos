@@ -78,3 +78,70 @@ function normalizeProgress(progress: ScanProgress) {
 export function isTauriRuntime() {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
+
+export interface DuplicateScanOptions {
+  source: string;
+  allowedExtensions: string[];
+}
+
+export interface DuplicateFile {
+  path: string;
+  name: string;
+  size: number;
+  modified: number;
+}
+
+export interface DuplicateSet {
+  hash: string;
+  original: DuplicateFile;
+  duplicates: DuplicateFile[];
+}
+
+export interface DuplicateScanProgress {
+  scanned: number;
+  duplicatesFound: number;
+  currentFile: string;
+  elapsedMs: number;
+  phase: string;
+}
+
+export interface DuplicateResolveItem {
+  path: string;
+  hash: string;
+  isOriginal: boolean;
+}
+
+export interface DuplicateResolveOptions {
+  items: DuplicateResolveItem[];
+  deleteDuplicates: boolean;
+  moveDuplicatesTo?: string;
+}
+
+export interface DuplicateResolveSummary {
+  resolvedCount: number;
+  deletedCount: number;
+  movedCount: number;
+  savedBytes: number;
+  errors: string[];
+  elapsedMs: number;
+}
+
+export async function scanDuplicates(options: DuplicateScanOptions): Promise<DuplicateSet[]> {
+  return invoke('scan_duplicates', { options });
+}
+
+export async function resolveDuplicates(options: DuplicateResolveOptions): Promise<DuplicateResolveSummary> {
+  return invoke('resolve_duplicates', { options });
+}
+
+export interface PhotoEntry {
+  path: string;
+  name: string;
+  sizeBytes: number;
+  modifiedMs: number;
+  isVideo: boolean;
+}
+
+export async function listPhotos(folder: string): Promise<PhotoEntry[]> {
+  return invoke('list_photos', { folder });
+}
