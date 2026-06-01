@@ -25,28 +25,9 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sqlx = { version = "0.7", features = ["runtime-tokio", "tls-native-tls", "sqlite"] }
 tokio = { version = "1", features = ["full"] }
-image = { version = "0.24", features = ["webp"] }
 kamadak-exif = "0.5"
 walkdir = "2"
-notify = "6"
-ort = "2.0.0-rc.4"
-ndarray = "0.15"
 chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1", features = ["v4", "serde"] }
-anyhow = "1"
-base64 = "0.21"
-rayon = "1.10"
-jwalk = "0.8"
-crossbeam-channel = "0.5"
-xxhash-rust = { version = "0.8", features = ["xxh64"] }
-memmap2 = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
-num_cpus = "1.17.0"
-
-[target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", features = ["Win32_Storage_FileSystem", "Win32_System_Ioctl", "Win32_Foundation", "Win32_System_IO"] }
-mft = "0.7.0"
-
