@@ -145,3 +145,35 @@ export interface PhotoEntry {
 export async function listPhotos(folder: string): Promise<PhotoEntry[]> {
   return invoke('list_photos', { folder });
 }
+
+// ─── Trash ───────────────────────────────────────────────────────────────────
+
+export interface TrashEntry {
+  path: string;
+  name: string;
+  originalPath: string;
+  movedAt: number;
+  size: number;
+}
+
+export interface TrashCleanupSummary {
+  deletedCount: number;
+  savedBytes: number;
+  errors: string[];
+}
+
+export async function moveFilesToTrash(paths: string[], trashFolder: string): Promise<TrashEntry[]> {
+  return invoke('move_files_to_trash', { paths, trashFolder });
+}
+
+export async function cleanupTrashFolder(trashFolder: string, retentionDays: number): Promise<TrashCleanupSummary> {
+  return invoke('cleanup_trash_folder', { trashFolder, retentionDays });
+}
+
+export async function listTrashFolder(trashFolder: string): Promise<TrashEntry[]> {
+  return invoke('list_trash_folder', { trashFolder });
+}
+
+export async function restoreFilesFromTrash(paths: string[], trashFolder: string): Promise<string[]> {
+  return invoke('restore_files_from_trash', { paths, trashFolder });
+}
