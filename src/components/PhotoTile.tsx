@@ -8,6 +8,7 @@ import {
   MoreVertical,
   Check,
   Folder,
+  Star,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { isTauriRuntime, type PhotoEntry } from '../lib/tauri';
@@ -26,6 +27,8 @@ interface Props {
   onToggleSelect: () => void;
   onSelectClick: () => void;
   onFolderClick?: () => void;
+  onToggleFavorite?: () => void;
+  isFavorite?: boolean;
   gap?: number;
 }
 
@@ -37,6 +40,8 @@ export function PhotoTile({
   onToggleSelect,
   onSelectClick,
   onFolderClick,
+  onToggleFavorite,
+  isFavorite,
   gap = 4,
 }: Props) {
   const [loaded, setLoaded] = useState(false);
@@ -152,6 +157,18 @@ export function PhotoTile({
         >
           {isSelected && <Check size={13} strokeWidth={3} className="text-white" />}
         </div>
+      )}
+
+      {/* Favorite star */}
+      {onToggleFavorite && !selectionMode && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+          className={`absolute top-2 left-2 z-10 w-7 h-7 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 hover:scale-110 ${
+            isFavorite ? 'opacity-100 bg-amber-400/20' : 'bg-black/40'
+          }`}
+        >
+          <Star size={12} className={isFavorite ? 'text-amber-400' : 'text-white/80'} fill={isFavorite ? '#fbbf24' : 'none'} />
+        </button>
       )}
 
       {/* 3-dot menu - only in non-selection mode */}

@@ -17,6 +17,7 @@ import { listPhotos, isTauriRuntime, type PhotoEntry } from '../lib/tauri';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useSavedPathsStore } from '../store/useSavedPathsStore';
 import { useStore } from '../store/useStore';
+import { useFavoritesStore } from '../store/useFavoritesStore';
 import { PhotoTile, type LayoutPhoto } from './PhotoTile';
 import { CreateAlbumDialog } from './CreateAlbumDialog';
 
@@ -159,6 +160,8 @@ export function PhotosPage() {
   const [showAlbumDialog, setShowAlbumDialog] = useState(false);
 
   const { searchQuery, sortBy } = useStore();
+  const { paths: favPaths, toggle: toggleFavorite, loadFavorites } = useFavoritesStore();
+  useEffect(() => { loadFavorites(); }, []);
 
   // Close path dropdown
   useEffect(() => {
@@ -481,6 +484,8 @@ export function PhotosPage() {
                               onOpen={() => setLightboxIndex(rowOffset + i)}
                               onToggleSelect={() => handleToggleSelect(photo.path)}
                               onSelectClick={handleSelectClick}
+                              onToggleFavorite={() => toggleFavorite(photo.path)}
+                              isFavorite={favPaths.has(photo.path)}
                               gap={GRID_GAP}
                             />
                           ))}

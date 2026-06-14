@@ -218,3 +218,17 @@ export interface PhotoEntry {
 export async function listPhotos(folder: string): Promise<PhotoEntry[]> {
   return invoke('list_photos', { folder });
 }
+
+// ─── Favorites ───────────────────────────────────────────────────────────────
+
+export async function addFavorite(path: string): Promise<void> {
+  return invoke('add_favorite', { path });
+}
+
+export async function removeFavorite(path: string): Promise<void> {
+  return invoke('remove_favorite', { path });
+}
+
+export async function listFavorites(): Promise<string[]> {
+  return invoke('list_favorites');
+}
