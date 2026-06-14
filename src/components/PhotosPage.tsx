@@ -186,23 +186,27 @@ function Lightbox({
     >
       {/* Top actions */}
       <button onClick={(e) => { e.stopPropagation(); setSlideshow(!slideshow); }}
-        className={`absolute top-4 left-4 z-10 p-2 rounded-full transition-colors ${
+        className={`absolute top-4 left-4 z-30 p-2 rounded-full transition-colors ${
           slideshow ? 'bg-[var(--color-primary)] text-white' : 'bg-white/10 hover:bg-white/20 text-white'
         }`} title={slideshow ? 'Stop slideshow' : 'Start slideshow'}>
         {slideshow ? <Pause size={18} /> : <Play size={18} />}
       </button>
-      <button onClick={onClose} className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
+      <button onClick={onClose} className={`absolute z-30 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors ${
+        showInfo ? 'top-4 left-4' : 'top-4 right-4'
+      }`}>
         <X size={20} />
       </button>
       <button onClick={(e) => { e.stopPropagation(); setShowInfo(!showInfo); }}
-        className={`absolute top-4 right-16 z-10 p-2 rounded-full transition-colors ${
-          showInfo ? 'bg-[var(--color-primary)] text-white' : 'bg-white/10 hover:bg-white/20 text-white'
+        className={`absolute top-4 z-30 p-2 rounded-full transition-colors ${
+          showInfo
+            ? 'right-4 bg-red-400/20 text-red-300 hover:bg-red-400/30'
+            : 'right-16 bg-white/10 hover:bg-white/20 text-white'
         }`} title="Photo info (I)">
         <Info size={18} />
       </button>
 
       {/* Bottom bar */}
-      <div className="absolute bottom-0 left-0 right-0 z-10 px-6 py-4 bg-gradient-to-t from-black/70 to-transparent">
+      <div className="absolute bottom-0 left-0 right-0 z-30 px-6 py-4 bg-gradient-to-t from-black/70 to-transparent" style={{ pointerEvents: 'none' }}>
         <p className="text-white font-medium text-sm truncate">{photo.name}</p>
         <p className="text-white/50 text-xs mt-0.5">
           {formatFileSize(photo.sizeBytes)} · {new Date(photo.modifiedMs).toLocaleString()}
@@ -212,12 +216,12 @@ function Lightbox({
 
       {/* Nav */}
       {index > 0 && (
-        <button onClick={(e) => { e.stopPropagation(); onPrev(); }} className="absolute left-4 z-10 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
+        <button onClick={(e) => { e.stopPropagation(); onPrev(); }} className="absolute left-4 z-30 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
           <ChevronLeft size={24} />
         </button>
       )}
       {index < photos.length - 1 && (
-        <button onClick={(e) => { e.stopPropagation(); onNext(); }} className="absolute right-4 z-10 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
+        <button onClick={(e) => { e.stopPropagation(); onNext(); }} className="absolute right-4 z-30 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
           <ChevronRight size={24} />
         </button>
       )}
