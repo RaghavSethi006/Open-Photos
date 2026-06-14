@@ -22,32 +22,37 @@ pub struct ExifData {
     pub orientation: Option<i64>,
 }
 
-fn rational_to_f64(num: i64, den: i64) -> f64 {
-    if den == 0 { 0.0 } else { num as f64 / den as f64 }
+fn get_first_rational(value: &exif::Value) -> Option<(i64, i64)> {
+    match value {
+        exif::Value::Rational(rationals) => {
+            let r = rationals.first()?;
+            Some((r.num as i64, r.denom as i64))
+        }
+        _ => None,
+    }
 }
 
 fn parse_rational(value: &exif::Value) -> Option<f64> {
-    let val = value.get_rat(0)?;
-    Some(rational_to_f64(val.0 as i64, val.1 as i64))
+    let (num, den) = get_first_rational(value)?;
+    if den == 0 { None } else { Some(num as f64 / den as f64) }
 }
 
 fn format_rational(value: &exif::Value) -> Option<String> {
-    let val = value.get_rat(0)?;
-    if val.1 == 1 {
-        Some(val.0.to_string())
+    let (num, den) = get_first_rational(value)?;
+    if den == 1 {
+        Some(num.to_string())
     } else {
-        Some(format!("{}/{}", val.0, val.1))
+        Some(format!("{}/{}", num, den))
     }
 }
 
 fn parse_gps_coordinate(tag: exif::Tag, exif: &exif::Exif) -> Option<f64> {
     let field = exif.get_field(tag, exif::In::PRIMARY)?;
-    let val = &field.value;
-    match val {
+    match &field.value {
         exif::Value::Rational(rationals) if rationals.len() >= 3 => {
-            let deg = rational_to_f64(rationals[0].0 as i64, rationals[0].1 as i64);
-            let min = rational_to_f64(rationals[1].0 as i64, rationals[1].1 as i64);
-            let sec = rational_to_f64(rationals[2].0 as i64, rationals[2].1 as i64);
+            let deg = rationals[0].num as f64 / rationals[0].denom as f64;
+            let min = rationals[1].num as f64 / rationals[1].denom as f64;
+            let sec = rationals[2].num as f64 / rationals[2].denom as f64;
             Some(deg + min / 60.0 + sec / 3600.0)
         }
         _ => None,
