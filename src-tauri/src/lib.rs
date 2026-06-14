@@ -17,6 +17,10 @@ pub fn run() {
             commands::duplicates::scan_duplicates,
             commands::duplicates::resolve_duplicates,
             commands::photos::list_photos,
+            commands::trash::move_files_to_trash,
+            commands::trash::cleanup_trash_folder,
+            commands::trash::list_trash_folder,
+            commands::trash::restore_files_from_trash,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
