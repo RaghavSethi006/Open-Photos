@@ -1,5 +1,5 @@
 import { open } from '@tauri-apps/plugin-dialog';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FolderOpen,
@@ -148,7 +148,6 @@ export function PhotosPage() {
   const [folder, setFolder] = useState<string>('');
   const [showPathDropdown, setShowPathDropdown] = useState(false);
   const [allEntries, setAllEntries] = useState<PhotoEntry[]>([]);
-  const [groups, setGroups] = useState<{ label: string; dateKey: string; photos: LayoutPhoto[] }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -158,6 +157,8 @@ export function PhotosPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [showAlbumDialog, setShowAlbumDialog] = useState(false);
+
+  const { searchQuery, sortBy } = useStore();
 
   // Close path dropdown
   useEffect(() => {
@@ -219,15 +220,35 @@ export function PhotosPage() {
       // Filter out folders — only show photos (folders appear as temp albums in AlbumsPage)
       const photoEntries = entries.filter((e) => !e.isFolder);
       setAllEntries(photoEntries);
-      const layout = buildLayout(photoEntries);
-      const photoGroups = groupByDate(layout);
-      setGroups(photoGroups);
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
   };
+
+  const filteredEntries = useMemo(() => {
+    if (!searchQuery.trim()) return allEntries;
+    const q = searchQuery.toLowerCase();
+    return allEntries.filter((e) => e.name.toLowerCase().includes(q));
+  }, [allEntries, searchQuery]);
+
+  const sortedEntries = useMemo(() => {
+    const entries = [...filteredEntries];
+    switch (sortBy) {
+      case 'newest': return entries.sort((a, b) => b.modifiedMs - a.modifiedMs);
+      case 'oldest': return entries.sort((a, b) => a.modifiedMs - b.modifiedMs);
+      case 'name-asc': return entries.sort((a, b) => a.name.localeCompare(b.name));
+      case 'name-desc': return entries.sort((a, b) => b.name.localeCompare(a.name));
+      case 'largest': return entries.sort((a, b) => b.sizeBytes - a.sizeBytes);
+      default: return entries;
+    }
+  }, [filteredEntries, sortBy]);
+
+  const groups = useMemo(() => {
+    const layout = buildLayout(sortedEntries);
+    return groupByDate(layout);
+  }, [sortedEntries]);
 
   const handleBrowse = async () => {
     try {

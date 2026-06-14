@@ -15,6 +15,9 @@ interface StoreState {
 
   searchQuery: string;
   setSearchQuery: (q: string) => void;
+
+  sortBy: 'newest' | 'oldest' | 'name-asc' | 'name-desc' | 'largest';
+  setSortBy: (sort: StoreState['sortBy']) => void;
 }
 
 export const useStore = create<StoreState>((set) => ({
@@ -32,6 +35,9 @@ export const useStore = create<StoreState>((set) => ({
 
   searchQuery: '',
   setSearchQuery: (searchQuery) => set({ searchQuery }),
+
+  sortBy: 'newest',
+  setSortBy: (sortBy) => set({ sortBy }),
 }));
 
 interface ProgressState {

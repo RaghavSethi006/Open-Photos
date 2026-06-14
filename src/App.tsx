@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
 import { ScanProgressHUD } from './components/ScanProgressHUD';
+import { ToastContainer } from './components/ToastContainer';
 import { ScanPage } from './components/ScanPage';
 import { DuplicatesPage } from './components/DuplicatesPage';
 import { PhotosPage } from './components/PhotosPage';
@@ -77,6 +78,7 @@ function App() {
         </main>
       </div>
       <ScanProgressHUD />
+      <ToastContainer />
     </div>
   );
 }
