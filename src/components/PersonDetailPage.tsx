@@ -1,12 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, User, Loader2 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useStore } from '../store/useStore';
 import { getPersonPhotos, listPeople, type PersonInfo, isTauriRuntime } from '../lib/tauri';
-import { useFavoritesStore } from '../store/useFavoritesStore';
-
-const TARGET_ROW_HEIGHT = 200;
 
 interface DisplayPhoto {
   path: string;

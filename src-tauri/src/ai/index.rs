@@ -21,6 +21,7 @@ pub struct FaceRecord {
     pub id: String,
     pub photo_path: String,
     pub face_index: usize,
+    pub embedding: Vec<f32>,
     pub bbox: [f32; 4],
     pub landmarks: [[f32; 2]; 5],
     pub confidence: f32,
@@ -92,6 +93,7 @@ pub fn add_faces(
             id: Uuid::new_v4().to_string(),
             photo_path: photo_path.to_string(),
             face_index: emb.face_index,
+            embedding: emb.embedding.clone(),
             bbox: emb.bbox,
             landmarks: emb.landmarks,
             confidence: emb.confidence,
@@ -104,6 +106,103 @@ pub fn add_faces(
     index.faces.extend(new_faces.clone());
     write_index(&index)?;
     Ok(new_faces)
+}
+
+pub fn auto_cluster() -> Result<(), String> {
+    let mut index = read_index()?;
+    let threshold = index.similarity_threshold;
+
+    let face_count = index.faces.len();
+
+    struct FaceInfo {
+        embedding: Vec<f32>,
+    }
+
+    let unassigned: Vec<(usize, FaceInfo)> = index
+        .faces
+        .iter()
+        .enumerate()
+        .filter(|(_, f)| f.person_id.is_none() && !f.rejected)
+        .map(|(i, f)| {
+            (i, FaceInfo {
+                embedding: f.embedding.clone(),
+            })
+        })
+        .collect();
+
+    if unassigned.is_empty() {
+        return Ok(());
+    }
+
+    let n = unassigned.len();
+    let unassigned_indices: Vec<usize> = unassigned.iter().map(|(i, _)| *i).collect();
+
+    let mut adjacency: Vec<Vec<usize>> = vec![vec![]; n];
+    for i in 0..n {
+        for j in (i + 1)..n {
+            let sim = cosine_sim(&unassigned[i].1.embedding, &unassigned[j].1.embedding);
+            if sim >= threshold {
+                adjacency[i].push(j);
+                adjacency[j].push(i);
+            }
+        }
+    }
+
+    let mut visited = vec![false; n];
+    for i in 0..n {
+        if visited[i] {
+            continue;
+        }
+        let mut cluster_indices = vec![];
+        let mut stack = vec![i];
+        while let Some(node) = stack.pop() {
+            if visited[node] {
+                continue;
+            }
+            visited[node] = true;
+            cluster_indices.push(node);
+            for &neighbor in &adjacency[node] {
+                if !visited[neighbor] {
+                    stack.push(neighbor);
+                }
+            }
+        }
+        if cluster_indices.len() >= 2 {
+            let person_id = Uuid::new_v4().to_string();
+            let person_name = format!("Person {}", index.people.len() + 1);
+            let first_face_idx = unassigned_indices[cluster_indices[0]];
+            let thumbnail_path = if first_face_idx < face_count {
+                index.faces[first_face_idx].photo_path.clone()
+            } else {
+                String::new()
+            };
+            for &ci in &cluster_indices {
+                let face_idx = unassigned_indices[ci];
+                if face_idx < face_count {
+                    index.faces[face_idx].person_id = Some(person_id.clone());
+                }
+            }
+            index.people.push(Person {
+                id: person_id,
+                name: person_name,
+                face_count: cluster_indices.len() as u32,
+                thumbnail_path,
+            });
+        }
+    }
+
+    update_person_counts(&mut index);
+    write_index(&index)
+}
+
+fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
+    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm_a == 0.0 || norm_b == 0.0 {
+        return 0.0;
+    }
+    dot / (norm_a * norm_b)
 }
 
 pub fn assign_person(face_ids: &[String], person_name: &str) -> Result<Person, String> {
@@ -159,8 +258,7 @@ pub fn merge_people(person_ids: &[String], target_name: &str) -> Result<Vec<Pers
     update_person_counts(&mut index);
     write_index(&index)?;
 
-    let merged = index.people.clone();
-    Ok(merged)
+    Ok(index.people)
 }
 
 pub fn delete_person(person_id: &str) -> Result<(), String> {
@@ -225,6 +323,6 @@ fn update_person_counts(index: &mut FaceIndex) {
     for person in &mut index.people {
         let entry = counts.get(&person.id);
         person.face_count = entry.map(|(c, _)| *c).unwrap_or(0);
-        person.thumbnail_path = entry.map(|(_, p)| p).unwrap_or_default();
+        person.thumbnail_path = entry.map(|(_, p)| p.clone()).unwrap_or_default();
     }
 }

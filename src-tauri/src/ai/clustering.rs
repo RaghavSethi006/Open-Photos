@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -70,7 +70,7 @@ pub fn cluster_embeddings(
     clusters
 }
 
-pub fn average_embedding(embeddings: &[&FaceEmbedding]) -> Vec<f32> {
+pub fn average_embedding(embeddings: &[FaceEmbedding]) -> Vec<f32> {
     if embeddings.is_empty() {
         return vec![];
     }
@@ -85,11 +85,11 @@ pub fn average_embedding(embeddings: &[&FaceEmbedding]) -> Vec<f32> {
     avg
 }
 
-pub fn find_best_thumbnail(embeddings: &[&FaceEmbedding]) -> Option<&FaceEmbedding> {
+pub fn find_best_thumbnail(embeddings: &[FaceEmbedding]) -> Option<FaceEmbedding> {
     if embeddings.is_empty() {
         return None;
     }
     embeddings.iter().max_by(|a, b| {
-        a.confidence.partial_cmp(&b.confidence).unwrap_or(std::cmp::Ordering::Equal)
-    }).copied()
+        a.confidence.partial_cmp(&b.confidence).unwrap_or(Ordering::Equal)
+    }).cloned()
 }

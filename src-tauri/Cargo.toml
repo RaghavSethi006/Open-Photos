@@ -34,5 +34,6 @@ tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 sha2 = "0.11.0"
 uuid = { version = "1", features = ["v4"] }
 dirs-next = "2"
-face_id = { version = "0.4", default-features = false, features = ["serde", "clustering", "directml"] }
+face_id = { version = "0.4", default-features = false, features = ["serde", "clustering"] }
 image = "0.25"
+reqwest = { version = "0.12", features = ["blocking"] }

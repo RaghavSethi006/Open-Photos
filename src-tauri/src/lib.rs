@@ -36,6 +36,7 @@ pub fn run() {
             commands::faces::check_face_models,
             commands::faces::scan_faces,
             commands::faces::cluster_faces,
+            commands::faces::recluster_faces,
             commands::faces::list_people,
             commands::faces::name_person,
             commands::faces::rename_person,

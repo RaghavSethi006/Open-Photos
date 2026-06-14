@@ -1,10 +1,7 @@
-use crate::ai::analyzer::FaceAnalyzerManager;
-use crate::ai::clustering::{self, FaceEmbedding};
-use crate::ai::index;
-use std::sync::LazyLock;
+use crate::ai::analyzer::{get_analyzer_manager, ModelSize};
+use crate::ai::clustering::FaceEmbedding;
+use crate::ai::index::{self, FaceRecord};
 use tauri::{command, AppHandle, Emitter};
-
-static ANALYZER: LazyLock<FaceAnalyzerManager> = LazyLock::new(|| FaceAnalyzerManager::new());
 
 fn is_image_ext(path: &str) -> bool {
     let lower = path.to_lowercase();
@@ -18,13 +15,23 @@ fn is_image_ext(path: &str) -> bool {
         || lower.ends_with(".tif")
 }
 
+fn landmarks_to_array(landmarks: &Option<Vec<(f32, f32)>>) -> [[f32; 2]; 5] {
+    let mut result = [[0.0_f32; 2]; 5];
+    if let Some(pts) = landmarks {
+        for (i, &(x, y)) in pts.iter().enumerate().take(5) {
+            result[i] = [x, y];
+        }
+    }
+    result
+}
+
 #[command]
 pub async fn check_face_models(app_handle: AppHandle) -> Result<bool, String> {
-    if ANALYZER.is_ready() {
+    let mgr = get_analyzer_manager();
+    if mgr.is_ready() {
         return Ok(true);
     }
-    ANALYZER
-        .ensure_initialized(Some(&app_handle), crate::ai::analyzer::ModelSize::Small)
+    mgr.ensure_initialized(Some(&app_handle), ModelSize::Small)
         .await?;
     Ok(true)
 }
@@ -36,22 +43,20 @@ pub async fn scan_faces(
     app_handle: AppHandle,
 ) -> Result<Vec<String>, String> {
     let model_size = if use_large_model {
-        crate::ai::analyzer::ModelSize::Large
+        ModelSize::Large
     } else {
-        crate::ai::analyzer::ModelSize::Small
+        ModelSize::Small
     };
 
-    ANALYZER
-        .ensure_initialized(Some(&app_handle), model_size)
-        .await?;
+    let mgr = get_analyzer_manager();
+    mgr.ensure_initialized(Some(&app_handle), model_size).await?;
 
-    let analyzer_guard = ANALYZER.get_analyzer()?;
+    let analyzer_guard = mgr.get_analyzer()?;
     let analyzer = analyzer_guard
         .as_ref()
         .ok_or_else(|| "Face analyzer not initialized.".to_string())?;
 
     let total = paths.len();
-    let mut all_embeddings: Vec<FaceEmbedding> = Vec::new();
     let mut processed_photos: Vec<String> = Vec::new();
 
     for (idx, path) in paths.iter().enumerate() {
@@ -80,12 +85,13 @@ pub async fn scan_faces(
             if face.embedding.is_empty() {
                 continue;
             }
+            let bbox = &face.detection.bbox;
             let emb = FaceEmbedding {
                 photo_path: path.clone(),
                 face_index: fi,
                 embedding: face.embedding.clone(),
-                bbox: face.detection.bbox,
-                landmarks: face.detection.landmarks,
+                bbox: [bbox.x1, bbox.y1, bbox.x2, bbox.y2],
+                landmarks: landmarks_to_array(&face.detection.landmarks),
                 confidence: face.detection.score,
             };
             face_embeddings.push(emb);
@@ -93,8 +99,11 @@ pub async fn scan_faces(
 
         if !face_embeddings.is_empty() {
             let _ = index::add_faces(path, &face_embeddings, model_type, 0.6);
-            all_embeddings.extend(face_embeddings);
             processed_photos.push(path.clone());
+        }
+
+        if idx % 50 == 0 {
+            let _ = index::auto_cluster();
         }
 
         let _ = app_handle.emit(
@@ -103,7 +112,7 @@ pub async fn scan_faces(
                 "scanned": idx + 1,
                 "total": total,
                 "photosWithFaces": processed_photos.len(),
-                "facesFound": all_embeddings.len(),
+                "facesFound": 0,
                 "currentFile": path,
             }),
         );
@@ -114,7 +123,7 @@ pub async fn scan_faces(
         serde_json::json!({
             "scanned": total,
             "photosWithFaces": processed_photos.len(),
-            "facesFound": all_embeddings.len(),
+            "facesFound": 0,
         }),
     );
 
@@ -122,30 +131,11 @@ pub async fn scan_faces(
 }
 
 #[command]
-pub async fn cluster_faces(threshold: f32) -> Result<Vec<serde_json::Value>, String> {
+pub fn cluster_faces(_threshold: f32) -> Result<Vec<serde_json::Value>, String> {
     let idx = index::read_index()?;
-    let faces: Vec<FaceEmbedding> = idx
-        .faces
-        .iter()
-        .filter(|f| !f.rejected)
-        .map(|f| FaceEmbedding {
-            photo_path: f.photo_path.clone(),
-            face_index: f.face_index,
-            embedding: vec![], // We don't store embeddings in the index
-            bbox: f.bbox,
-            landmarks: f.landmarks,
-            confidence: f.confidence,
-        })
-        .collect();
-
-    if faces.is_empty() {
-        return Ok(vec![]);
-    }
-
-    let mut people = idx.people;
     let mut result = Vec::new();
 
-    for person in &people {
+    for person in &idx.people {
         let person_faces: Vec<&FaceRecord> = idx
             .faces
             .iter()
@@ -165,6 +155,11 @@ pub async fn cluster_faces(threshold: f32) -> Result<Vec<serde_json::Value>, Str
 }
 
 #[command]
+pub fn recluster_faces() -> Result<(), String> {
+    index::auto_cluster()
+}
+
+#[command]
 pub fn list_people() -> Result<Vec<serde_json::Value>, String> {
     let idx = index::read_index()?;
     let unassigned_count = idx
@@ -177,12 +172,6 @@ pub fn list_people() -> Result<Vec<serde_json::Value>, String> {
         .people
         .iter()
         .map(|p| {
-            let person_faces: Vec<&index::FaceRecord> = idx
-                .faces
-                .iter()
-                .filter(|f| f.person_id.as_deref() == Some(&p.id) && !f.rejected)
-                .collect();
-
             serde_json::json!({
                 "id": p.id,
                 "name": p.name,
@@ -225,7 +214,10 @@ pub fn rename_person(person_id: String, name: String) -> Result<(), String> {
 }
 
 #[command]
-pub fn merge_people(person_ids: Vec<String>, target_name: String) -> Result<Vec<serde_json::Value>, String> {
+pub fn merge_people(
+    person_ids: Vec<String>,
+    target_name: String,
+) -> Result<Vec<serde_json::Value>, String> {
     let people = index::merge_people(&person_ids, &target_name)?;
     Ok(people
         .into_iter()
@@ -281,5 +273,3 @@ pub fn get_photo_faces(photo_path: String) -> Result<Vec<serde_json::Value>, Str
 
     Ok(faces)
 }
-
-use index::FaceRecord;

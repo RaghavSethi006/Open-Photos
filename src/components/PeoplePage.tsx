@@ -1,15 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Users, UserPlus, ScanFace, Loader2, ChevronRight, User } from 'lucide-react';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { useStore } from '../store/useStore';
-import { useFaceScanStore } from '../store/useStore';
 import {
   listPeople,
   checkFaceModels,
   scanFaces,
   type PersonInfo,
-  type FaceProgress,
   isTauriRuntime,
 } from '../lib/tauri';
 import { FaceDetectProgressHUD } from './FaceDetectProgressHUD';
@@ -20,7 +17,6 @@ export function PeoplePage() {
   const [loading, setLoading] = useState(true);
   const [modelsReady, setModelsReady] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const { isScanning } = useFaceScanStore();
 
   const loadPeople = useCallback(async () => {
     if (!isTauriRuntime()) {

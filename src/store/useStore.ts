@@ -5,9 +5,6 @@ interface StoreState {
   toggleSidebar: () => void;
 
   currentView: 'timeline' | 'grid' | 'map' | 'albums' | 'favorites' | 'years' | 'trash' | 'scan' | 'duplicates' | 'settings' | 'album-detail' | 'people' | 'person-detail';
-
-  selectedPersonId: string | null;
-  setSelectedPersonId: (id: string | null) => void;
   setCurrentView: (view: StoreState['currentView']) => void;
 
   selectedAlbumId: string | null;
