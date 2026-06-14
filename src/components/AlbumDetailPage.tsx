@@ -8,7 +8,6 @@ import {
   Loader2,
   ImageOff,
   Play,
-  ZoomIn,
   X,
   ChevronLeft,
   ChevronRight,
@@ -457,12 +456,6 @@ function AlbumTile({ photo, onOpen, onRemove }: {
         <X size={11} className="text-white" />
       </button>
 
-      {/* Zoom icon */}
-      <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none">
-        <div className="w-6 h-6 rounded-full bg-black/40 flex items-center justify-center">
-          <ZoomIn size={11} className="text-white" />
-        </div>
-      </div>
     </div>
   );
 }

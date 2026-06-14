@@ -4,7 +4,6 @@ import {
   Play,
   ImageOff,
   Loader2,
-  ZoomIn,
   MoreVertical,
   Check,
   Folder,
@@ -255,15 +254,6 @@ export function PhotoTile({
               </button>
             </div>
           )}
-        </div>
-      )}
-
-      {/* Zoom icon on hover */}
-      {!selectionMode && (
-        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none">
-          <div className="w-7 h-7 rounded-full bg-black/40 flex items-center justify-center">
-            <ZoomIn size={13} className="text-white" />
-          </div>
         </div>
       )}
 
