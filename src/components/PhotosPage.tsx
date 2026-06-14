@@ -13,11 +13,12 @@ import {
   Image,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { listPhotos, isTauriRuntime, type PhotoEntry } from '../lib/tauri';
+import { listPhotos, isTauriRuntime, moveFilesToTrash, type PhotoEntry } from '../lib/tauri';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useSavedPathsStore } from '../store/useSavedPathsStore';
 import { useStore } from '../store/useStore';
 import { useFavoritesStore } from '../store/useFavoritesStore';
+import { useToastStore } from '../store/useToastStore';
 import { PhotoTile, type LayoutPhoto } from './PhotoTile';
 import { CreateAlbumDialog } from './CreateAlbumDialog';
 
@@ -306,6 +307,23 @@ export function PhotosPage() {
     setShowAlbumDialog(true);
   };
 
+  const addToast = useToastStore((s) => s.addToast);
+  const { trashFolder } = useSettingsStore();
+
+  const handleDelete = async (path: string) => {
+    if (!trashFolder.trim()) {
+      addToast({ type: 'error', message: 'Please set a Trash folder in Settings first.' });
+      return;
+    }
+    try {
+      await moveFilesToTrash([path], trashFolder);
+      setAllEntries((prev) => prev.filter((e) => e.path !== path));
+      addToast({ type: 'success', message: 'Moved 1 file to trash' });
+    } catch (err) {
+      addToast({ type: 'error', message: String(err) });
+    }
+  };
+
   const handleAlbumCreated = (_albumId: string) => {
     setSelectionMode(false);
     setSelectedPaths(new Set());
@@ -486,6 +504,7 @@ export function PhotosPage() {
                               onSelectClick={handleSelectClick}
                               onToggleFavorite={() => toggleFavorite(photo.path)}
                               isFavorite={favPaths.has(photo.path)}
+                              onDelete={() => handleDelete(photo.path)}
                               gap={GRID_GAP}
                             />
                           ))}

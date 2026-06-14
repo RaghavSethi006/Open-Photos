@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Play,
@@ -9,9 +9,16 @@ import {
   Check,
   Folder,
   Star,
+  Eye,
+  Star as StarIcon,
+  Copy,
+  ExternalLink,
+  Trash2,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { isTauriRuntime, type PhotoEntry } from '../lib/tauri';
+import { ContextMenu, type ContextMenuItem } from './ContextMenu';
+import { useToastStore } from '../store/useToastStore';
 
 export interface LayoutPhoto extends PhotoEntry {
   src: string;
@@ -29,6 +36,7 @@ interface Props {
   onFolderClick?: () => void;
   onToggleFavorite?: () => void;
   isFavorite?: boolean;
+  onDelete?: () => void;
   gap?: number;
 }
 
@@ -42,12 +50,48 @@ export function PhotoTile({
   onFolderClick,
   onToggleFavorite,
   isFavorite,
+  onDelete,
   gap = 4,
 }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const addToast = useToastStore((s) => s.addToast);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const copyPath = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(photo.path);
+      addToast({ type: 'info', message: 'Path copied to clipboard' });
+    } catch { /* ignore */ }
+  }, [photo.path, addToast]);
+
+  const ctxItems: ContextMenuItem[] = [
+    { label: 'Open', icon: <Eye size={14} />, onClick: onOpen },
+  ];
+  if (onToggleFavorite) {
+    ctxItems.push({
+      label: isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
+      icon: <StarIcon size={14} />,
+      onClick: onToggleFavorite,
+    });
+  }
+  ctxItems.push(
+    { label: 'Select', icon: <Check size={14} />, onClick: onSelectClick },
+    { label: 'Copy Path', icon: <Copy size={14} />, onClick: copyPath },
+  );
+  if (onDelete) {
+    ctxItems.push(
+      { label: 'Move to Trash', icon: <Trash2 size={14} />, danger: true, onClick: onDelete },
+    );
+  }
 
   useEffect(() => {
     if (!showMenu) return;
@@ -99,6 +143,7 @@ export function PhotoTile({
       className="relative shrink-0 overflow-hidden rounded-sm cursor-pointer group bg-white/5"
       style={style}
       onClick={handleClick}
+      onContextMenu={handleContextMenu}
     >
       {!loaded && !errored && (
         <div className="absolute inset-0 flex items-center justify-center">
@@ -226,6 +271,10 @@ export function PhotoTile({
       {/* Selected overlay */}
       {isSelected && (
         <div className="absolute inset-0 border-2 border-[var(--color-primary)] rounded-sm pointer-events-none" />
+      )}
+
+      {ctxMenu && (
+        <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems} onClose={() => setCtxMenu(null)} />
       )}
     </motion.div>
   );
