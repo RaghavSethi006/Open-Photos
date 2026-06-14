@@ -14,6 +14,7 @@ import {
   Info,
   Play,
   Pause,
+  Trash2,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { listPhotos, isTauriRuntime, moveFilesToTrash, type PhotoEntry } from '../lib/tauri';
@@ -440,6 +441,23 @@ export function PhotosPage() {
     }
   };
 
+  const handleBatchDelete = async () => {
+    if (!trashFolder.trim()) {
+      addToast({ type: 'error', message: 'Please set a Trash folder in Settings first.' });
+      return;
+    }
+    const paths = Array.from(selectedPaths);
+    try {
+      await moveFilesToTrash(paths, trashFolder);
+      setAllEntries((prev) => prev.filter((e) => !selectedPaths.has(e.path)));
+      addToast({ type: 'success', message: `Moved ${paths.length} file(s) to trash` });
+      setSelectedPaths(new Set());
+      setSelectionMode(false);
+    } catch (err) {
+      addToast({ type: 'error', message: String(err) });
+    }
+  };
+
   const handleAlbumCreated = (_albumId: string) => {
     setSelectionMode(false);
     setSelectedPaths(new Set());
@@ -661,6 +679,13 @@ export function PhotosPage() {
               <strong>{selectedPaths.size}</strong> selected
             </span>
             <div className="w-px h-6 bg-white/10" />
+            <button
+              onClick={handleBatchDelete}
+              className="flex items-center gap-2 rounded-xl bg-red-500/80 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-500"
+            >
+              <Trash2 size={14} />
+              Move to Trash
+            </button>
             <button
               onClick={handleSaveAsAlbum}
               className="flex items-center gap-2 rounded-xl bg-[var(--color-primary)] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90"
