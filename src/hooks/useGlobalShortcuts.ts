@@ -38,6 +38,9 @@ export function useGlobalShortcuts() {
         case '5':
           setCurrentView('settings');
           break;
+        case 'p':
+          setCurrentView('people');
+          break;
         case 't':
           setCurrentView('trash');
           break;

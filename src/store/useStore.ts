@@ -4,11 +4,17 @@ interface StoreState {
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
 
-  currentView: 'timeline' | 'grid' | 'map' | 'albums' | 'favorites' | 'years' | 'trash' | 'scan' | 'duplicates' | 'settings' | 'album-detail';
+  currentView: 'timeline' | 'grid' | 'map' | 'albums' | 'favorites' | 'years' | 'trash' | 'scan' | 'duplicates' | 'settings' | 'album-detail' | 'people' | 'person-detail';
+
+  selectedPersonId: string | null;
+  setSelectedPersonId: (id: string | null) => void;
   setCurrentView: (view: StoreState['currentView']) => void;
 
   selectedAlbumId: string | null;
   setSelectedAlbumId: (id: string | null) => void;
+
+  selectedPersonId: string | null;
+  setSelectedPersonId: (id: string | null) => void;
 
   pendingFolder: string | null;
   setPendingFolder: (path: string | null) => void;
@@ -29,6 +35,9 @@ export const useStore = create<StoreState>((set) => ({
 
   selectedAlbumId: null,
   setSelectedAlbumId: (id) => set({ selectedAlbumId: id }),
+
+  selectedPersonId: null,
+  setSelectedPersonId: (id) => set({ selectedPersonId: id }),
 
   pendingFolder: null,
   setPendingFolder: (path) => set({ pendingFolder: path }),
@@ -72,6 +81,28 @@ export const useProgressStore = create<ProgressState>((set) => ({
   moved: 0,
   skipped: 0,
   renamedDuplicates: 0,
+  updateProgress: (p) => set((state) => ({ ...state, ...p })),
+  setScanning: (isScanning) => set({ isScanning }),
+}));
+
+interface FaceScanState {
+  isScanning: boolean;
+  scanned: number;
+  total: number;
+  photosWithFaces: number;
+  facesFound: number;
+  currentFile: string;
+  updateProgress: (progress: Partial<FaceScanState>) => void;
+  setScanning: (isScanning: boolean) => void;
+}
+
+export const useFaceScanStore = create<FaceScanState>((set) => ({
+  isScanning: false,
+  scanned: 0,
+  total: 0,
+  photosWithFaces: 0,
+  facesFound: 0,
+  currentFile: '',
   updateProgress: (p) => set((state) => ({ ...state, ...p })),
   setScanning: (isScanning) => set({ isScanning }),
 }));

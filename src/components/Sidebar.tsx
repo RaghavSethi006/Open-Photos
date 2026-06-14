@@ -1,5 +1,5 @@
 import { useStore } from '../store/useStore';
-import { Library, Calendar, FolderHeart, Star, Trash2, PanelLeft, ScanLine, CopyMinus, Settings } from 'lucide-react';
+import { Library, Calendar, FolderHeart, Star, Trash2, PanelLeft, ScanLine, CopyMinus, Settings, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export function Sidebar() {
@@ -7,6 +7,7 @@ export function Sidebar() {
 
   const navItems = [
     { id: 'timeline', label: 'Photos', icon: Library },
+    { id: 'people', label: 'People', icon: Users },
     { id: 'years', label: 'Years', icon: Calendar },
     { id: 'albums', label: 'Albums', icon: FolderHeart },
     { id: 'favorites', label: 'Favorites', icon: Star },

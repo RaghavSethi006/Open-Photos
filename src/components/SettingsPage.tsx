@@ -385,6 +385,67 @@ export function SettingsPage() {
           </div>
         </section>
 
+        {/* Face AI */}
+        <section className="glass-panel rounded-2xl p-6">
+          <div className="mb-5 flex items-center gap-3">
+            <ScanLine size={18} className="text-[var(--color-primary)]" />
+            <h3 className="text-sm font-semibold text-white">Face AI</h3>
+          </div>
+
+          <div className="grid gap-5">
+            <div>
+              <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-2">
+                Recognition model
+              </label>
+              <p className="text-[10px] text-[var(--color-text-muted)]/60 mb-3">
+                Small model is faster and smaller (~16 MB). Large model is more accurate (~100 MB). Models download on first use.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  className="flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all border-[var(--color-primary)]/50 bg-[var(--color-primary)]/15 text-white"
+                >
+                  Small (Fast)
+                </button>
+                <button
+                  className="flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all border-white/10 bg-white/[0.03] text-[var(--color-text-muted)] hover:text-white"
+                >
+                  Large (Accurate)
+                </button>
+              </div>
+            </div>
+
+            <label className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 cursor-pointer">
+              <div>
+                <span className="text-sm font-medium text-white">Auto-scan faces</span>
+                <p className="text-[10px] text-[var(--color-text-muted)]/60 mt-0.5">
+                  Automatically scan for faces when photos are loaded.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                className="h-5 w-5 accent-[var(--color-primary)]"
+              />
+            </label>
+
+            <label className="block text-xs font-medium text-[var(--color-text-muted)]">
+              Similarity threshold
+              <p className="text-[10px] text-[var(--color-text-muted)]/60 mt-0.5 mb-2">
+                Lower = more aggressive grouping (may merge different people). Higher = stricter (may split same person).
+              </p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={0.3}
+                  max={0.8}
+                  step={0.05}
+                  className="flex-1 accent-[var(--color-primary)]"
+                />
+                <span className="text-sm text-white font-mono w-10 text-right">0.60</span>
+              </div>
+            </label>
+          </div>
+        </section>
+
         {/* Reset */}
         <div className="flex justify-end">
           <button

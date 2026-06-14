@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { useProgressStore } from '../store/useStore';
+import { useProgressStore, useFaceScanStore } from '../store/useStore';
 
 export interface ScanProgress {
   scanned: number;
@@ -56,12 +56,33 @@ export async function setupTauriListeners() {
 
     setTimeout(() => {
       useProgressStore.getState().setScanning(false);
-    }, 3000); // Keep HUD open for 3 seconds after complete
+    }, 3000);
+  });
+
+  const unlistenFaceProgress = await listen<FaceProgress>('face:progress', (event) => {
+    useFaceScanStore.getState().setScanning(true);
+    useFaceScanStore.getState().updateProgress(event.payload);
+  });
+
+  const unlistenFaceComplete = await listen<FaceScanResult>('face:complete', (event) => {
+    useFaceScanStore.getState().updateProgress({
+      scanned: event.payload.scanned,
+      total: event.payload.scanned,
+      photosWithFaces: event.payload.photosWithFaces,
+      facesFound: event.payload.facesFound,
+      currentFile: '',
+    });
+
+    setTimeout(() => {
+      useFaceScanStore.getState().setScanning(false);
+    }, 3000);
   });
 
   return () => {
     unlistenProgress();
     unlistenComplete();
+    unlistenFaceProgress();
+    unlistenFaceComplete();
   };
 }
 
@@ -254,4 +275,75 @@ export async function removeFavorite(path: string): Promise<void> {
 
 export async function listFavorites(): Promise<string[]> {
   return invoke('list_favorites');
+}
+
+// ─── Face AI ──────────────────────────────────────────────────────────────────
+
+export interface FaceProgress {
+  scanned: number;
+  total: number;
+  photosWithFaces: number;
+  facesFound: number;
+  currentFile: string;
+}
+
+export interface FaceScanResult {
+  scanned: number;
+  photosWithFaces: number;
+  facesFound: number;
+}
+
+export interface PersonInfo {
+  id: string;
+  name: string;
+  faceCount: number;
+  thumbnailPath: string;
+}
+
+export interface PhotoFaceInfo {
+  id: string;
+  bbox: [number, number, number, number];
+  confidence: number;
+  personId: string | null;
+  personName: string;
+}
+
+export async function checkFaceModels(): Promise<boolean> {
+  return invoke('check_face_models');
+}
+
+export async function scanFaces(paths: string[], useLargeModel: boolean): Promise<string[]> {
+  return invoke('scan_faces', { paths, useLargeModel });
+}
+
+export async function clusterFaces(threshold: number): Promise<any[]> {
+  return invoke('cluster_faces', { threshold });
+}
+
+export async function listPeople(): Promise<PersonInfo[]> {
+  return invoke('list_people');
+}
+
+export async function namePerson(faceIds: string[], name: string): Promise<PersonInfo> {
+  return invoke('name_person', { faceIds, name });
+}
+
+export async function renamePerson(personId: string, name: string): Promise<void> {
+  return invoke('rename_person', { personId, name });
+}
+
+export async function mergePeople(personIds: string[], targetName: string): Promise<PersonInfo[]> {
+  return invoke('merge_people', { personIds, targetName });
+}
+
+export async function deletePerson(personId: string): Promise<void> {
+  return invoke('delete_person', { personId });
+}
+
+export async function getPersonPhotos(personId: string): Promise<string[]> {
+  return invoke('get_person_photos', { personId });
+}
+
+export async function getPhotoFaces(photoPath: string): Promise<PhotoFaceInfo[]> {
+  return invoke('get_photo_faces', { photoPath });
 }

@@ -13,6 +13,8 @@ import { AlbumDetailPage } from './components/AlbumDetailPage';
 import { FavoritesPage } from './components/FavoritesPage';
 import { YearsPage } from './components/YearsPage';
 import { MapPage } from './components/MapPage';
+import { PeoplePage } from './components/PeoplePage';
+import { PersonDetailPage } from './components/PersonDetailPage';
 import { setupTauriListeners, cleanupTrashFolder } from './lib/tauri';
 import { useStore } from './store/useStore';
 import { useSettingsStore } from './store/useSettingsStore';
@@ -79,6 +81,8 @@ function App() {
             {currentView === 'favorites' && <FavoritesPage />}
             {currentView === 'years' && <YearsPage />}
             {currentView === 'trash' && <TrashPage />}
+            {currentView === 'people' && <PeoplePage />}
+            {currentView === 'person-detail' && <PersonDetailPage />}
           </div>
         </main>
       </div>
