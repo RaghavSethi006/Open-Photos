@@ -1,5 +1,4 @@
 import { open } from '@tauri-apps/plugin-dialog';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -7,36 +6,21 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  ZoomIn,
-  Play,
   ImageOff,
   Loader2,
   Bookmark,
+  CheckSquare,
+  Image,
 } from 'lucide-react';
-import { listPhotos, PhotoEntry, isTauriRuntime } from '../lib/tauri';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { listPhotos, isTauriRuntime, type PhotoEntry } from '../lib/tauri';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useSavedPathsStore } from '../store/useSavedPathsStore';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-interface LayoutPhoto extends PhotoEntry {
-  src: string;
-  displayWidth: number;
-  displayHeight: number;
-}
-
-interface DateGroup {
-  label: string;
-  dateKey: string;
-  photos: LayoutPhoto[];
-}
-
-// ─── Constants ────────────────────────────────────────────────────────────────
+import { PhotoTile, type LayoutPhoto } from './PhotoTile';
+import { CreateAlbumDialog } from './CreateAlbumDialog';
 
 const TARGET_ROW_HEIGHT = 240;
 const GRID_GAP = 4;
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatDateLabel(ms: number): string {
   const d = new Date(ms);
@@ -54,39 +38,11 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function ext(path: string): string {
-  return path.split('.').pop()?.toLowerCase() ?? '';
-}
-
-/** Very naive aspect-ratio map so we can lay out before images load */
 function guessAspect(name: string): number {
-  const e = ext(name);
+  const e = name.split('.').pop()?.toLowerCase() ?? '';
   if (['mp4', 'mov', 'mkv', 'avi', 'wmv', 'flv', 'm4v', 'webm'].includes(e)) return 16 / 9;
   return 4 / 3;
 }
-
-/** Compute a justified row layout (like Google Photos).
- *  Returns each photo with its rendered width and height. */
-function justifyRow(
-  photos: LayoutPhoto[],
-  containerWidth: number,
-  targetHeight: number,
-  gap: number,
-): LayoutPhoto[] {
-  if (photos.length === 0) return photos;
-
-  const totalAspect = photos.reduce((sum, p) => sum + p.displayWidth / p.displayHeight, 0);
-  const totalGaps = gap * (photos.length - 1);
-  const rowHeight = Math.min((containerWidth - totalGaps) / totalAspect, targetHeight * 1.5);
-
-  return photos.map((p) => ({
-    ...p,
-    displayWidth: Math.floor((p.displayWidth / p.displayHeight) * rowHeight),
-    displayHeight: Math.floor(rowHeight),
-  }));
-}
-
-// ─── Lightbox ─────────────────────────────────────────────────────────────────
 
 function Lightbox({
   photos,
@@ -125,23 +81,18 @@ function Lightbox({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/92 backdrop-blur-sm"
       onClick={onClose}
     >
-      {/* Close */}
       <button
         onClick={onClose}
         className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
       >
         <X size={20} />
       </button>
-
-      {/* Caption */}
       <div className="absolute bottom-0 left-0 right-0 z-10 px-6 py-4 bg-gradient-to-t from-black/70 to-transparent">
         <p className="text-white font-medium text-sm truncate">{photo.name}</p>
         <p className="text-white/50 text-xs mt-0.5">
           {formatFileSize(photo.sizeBytes)} · {new Date(photo.modifiedMs).toLocaleString()}
         </p>
       </div>
-
-      {/* Prev */}
       {index > 0 && (
         <button
           onClick={(e) => { e.stopPropagation(); onPrev(); }}
@@ -150,8 +101,6 @@ function Lightbox({
           <ChevronLeft size={24} />
         </button>
       )}
-
-      {/* Next */}
       {index < photos.length - 1 && (
         <button
           onClick={(e) => { e.stopPropagation(); onNext(); }}
@@ -160,28 +109,13 @@ function Lightbox({
           <ChevronRight size={24} />
         </button>
       )}
-
-      {/* Media */}
       <div onClick={(e) => e.stopPropagation()} className="max-w-[90vw] max-h-[85vh]">
         {photo.isVideo ? (
-          <video
-            src={photo.src}
-            controls
-            autoPlay
-            className="max-w-[90vw] max-h-[85vh] rounded-lg"
-            style={{ objectFit: 'contain' }}
-          />
+          <video src={photo.src} controls autoPlay className="max-w-[90vw] max-h-[85vh] rounded-lg" style={{ objectFit: 'contain' }} />
         ) : (
-          <img
-            src={photo.src}
-            alt={photo.name}
-            className="max-w-[90vw] max-h-[85vh] rounded-lg object-contain select-none"
-            draggable={false}
-          />
+          <img src={photo.src} alt={photo.name} className="max-w-[90vw] max-h-[85vh] rounded-lg object-contain select-none" draggable={false} />
         )}
       </div>
-
-      {/* Counter */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white/70 text-xs px-3 py-1.5 rounded-full">
         {index + 1} / {photos.length}
       </div>
@@ -189,126 +123,31 @@ function Lightbox({
   );
 }
 
-// ─── Photo Tile ───────────────────────────────────────────────────────────────
-
-function PhotoTile({
-  photo,
-  onClick,
-}: {
-  photo: LayoutPhoto;
-  onClick: () => void;
-}) {
-  const [loaded, setLoaded] = useState(false);
-  const [errored, setErrored] = useState(false);
-
-  return (
-    <motion.div
-      className="relative shrink-0 overflow-hidden rounded-sm cursor-pointer group bg-white/5"
-      style={{ width: photo.displayWidth, height: photo.displayHeight }}
-      onClick={onClick}
-    >
-      {!loaded && !errored && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Loader2 size={20} className="text-white/20 animate-spin" />
-        </div>
-      )}
-
-      {errored ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-white/20">
-          <ImageOff size={20} />
-          <span className="text-[10px]">error</span>
-        </div>
-      ) : photo.isVideo ? (
-        <div className="relative w-full h-full">
-          <video
-            src={photo.src}
-            className="w-full h-full object-cover"
-            muted
-            preload="metadata"
-            onLoadedMetadata={() => setLoaded(true)}
-            onError={() => setErrored(true)}
-          />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center">
-              <Play size={18} className="text-white ml-0.5" fill="white" />
-            </div>
-          </div>
-        </div>
-      ) : (
-        <img
-          src={photo.src}
-          alt={photo.name}
-          className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-          loading="lazy"
-          onLoad={() => setLoaded(true)}
-          onError={() => setErrored(true)}
-          draggable={false}
-        />
-      )}
-
-      {/* Hover overlay */}
-      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-150" />
-
-      {/* Zoom icon on hover */}
-      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-        <div className="w-7 h-7 rounded-full bg-black/40 flex items-center justify-center">
-          <ZoomIn size={13} className="text-white" />
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-// ─── Justified Row ────────────────────────────────────────────────────────────
-
-function PhotoRow({
-  photos,
-  containerWidth,
-  globalOffset,
-  onOpen,
-}: {
-  photos: LayoutPhoto[];
-  containerWidth: number;
-  globalOffset: number;
-  onOpen: (index: number) => void;
-}) {
-  const justified = justifyRow(photos, containerWidth, TARGET_ROW_HEIGHT, GRID_GAP);
-
-  return (
-    <div className="flex" style={{ gap: GRID_GAP }}>
-      {justified.map((photo, i) => (
-        <PhotoTile
-          key={photo.path}
-          photo={photo}
-          onClick={() => onOpen(globalOffset + i)}
-        />
-      ))}
-    </div>
-  );
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
-
 export function PhotosPage() {
   const { defaultFolder } = useSettingsStore();
   const { paths: savedPaths } = useSavedPathsStore();
 
   const [folder, setFolder] = useState<string>('');
   const [showPathDropdown, setShowPathDropdown] = useState(false);
-  const [photos, setPhotos] = useState<LayoutPhoto[]>([]);
-  const [groups, setGroups] = useState<DateGroup[]>([]);
+  const [allEntries, setAllEntries] = useState<PhotoEntry[]>([]);
+  const [, setPhotos] = useState<LayoutPhoto[]>([]);
+  const [folders, setFolders] = useState<LayoutPhoto[]>([]);
+  const [groups, setGroups] = useState<{ label: string; dateKey: string; photos: LayoutPhoto[] }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1000);
 
-  // Close path dropdown on click outside
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const [showAlbumDialog, setShowAlbumDialog] = useState(false);
+
+  // Close path dropdown
   useEffect(() => {
     if (!showPathDropdown) return;
     const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('.path-dropdown-area')) {
+      if (!(e.target as HTMLElement).closest('.path-dropdown-area')) {
         setShowPathDropdown(false);
       }
     };
@@ -327,19 +166,26 @@ export function PhotosPage() {
   }, []);
 
   const buildLayout = useCallback((entries: PhotoEntry[]): LayoutPhoto[] => {
-    return entries.map((e) => {
-      const aspect = guessAspect(e.name);
-      return {
+    const layout: LayoutPhoto[] = [];
+    for (const e of entries) {
+      let aspect: number;
+      if (e.isFolder) {
+        aspect = 1;
+      } else {
+        aspect = guessAspect(e.name);
+      }
+      layout.push({
         ...e,
-        src: isTauriRuntime() ? convertFileSrc(e.path) : e.path,
+        src: e.isFolder ? '' : (isTauriRuntime() ? convertFileSrc(e.path) : e.path),
         displayWidth: Math.round(TARGET_ROW_HEIGHT * aspect),
-        displayHeight: TARGET_ROW_HEIGHT,
-      };
-    });
+        displayHeight: e.isFolder ? 100 : TARGET_ROW_HEIGHT,
+      });
+    }
+    return layout;
   }, []);
 
-  const groupByDate = useCallback((layoutPhotos: LayoutPhoto[]): DateGroup[] => {
-    const map = new Map<string, DateGroup>();
+  const groupByDate = useCallback((layoutPhotos: LayoutPhoto[]): { label: string; dateKey: string; photos: LayoutPhoto[] }[] => {
+    const map = new Map<string, { label: string; dateKey: string; photos: LayoutPhoto[] }>();
     for (const p of layoutPhotos) {
       const key = dateKey(p.modifiedMs);
       if (!map.has(key)) {
@@ -349,6 +195,43 @@ export function PhotosPage() {
     }
     return Array.from(map.values());
   }, []);
+
+  const organizeEntries = useCallback((entries: PhotoEntry[]) => {
+    const folderEntries: PhotoEntry[] = [];
+    const photoEntries: PhotoEntry[] = [];
+    for (const e of entries) {
+      if (e.isFolder) {
+        folderEntries.push(e);
+      } else {
+        photoEntries.push(e);
+      }
+    }
+    const folderLayout = buildLayout(folderEntries);
+    const photoLayout = buildLayout(photoEntries);
+    const photoGroups = groupByDate(photoLayout);
+    return { folders: folderLayout, groups: photoGroups, allEntries: entries };
+  }, [buildLayout, groupByDate]);
+
+  const loadPhotos = async (dir: string) => {
+    setLoading(true);
+    setError(null);
+    setPhotos([]);
+    setFolders([]);
+    setGroups([]);
+    setSelectionMode(false);
+    setSelectedPaths(new Set());
+    try {
+      const entries = await listPhotos(dir);
+      const { folders: f, groups: g, allEntries } = organizeEntries(entries);
+      setAllEntries(allEntries);
+      setFolders(f);
+      setGroups(g);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleBrowse = async () => {
     try {
@@ -362,24 +245,6 @@ export function PhotosPage() {
     }
   };
 
-  const loadPhotos = async (dir: string) => {
-    setLoading(true);
-    setError(null);
-    setPhotos([]);
-    setGroups([]);
-    try {
-      const entries = await listPhotos(dir);
-      const layout = buildLayout(entries);
-      setPhotos(layout);
-      setGroups(groupByDate(layout));
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Auto-load default folder on mount
   useEffect(() => {
     if (defaultFolder && !folder) {
       setFolder(defaultFolder);
@@ -391,10 +256,44 @@ export function PhotosPage() {
     if (folder) loadPhotos(folder);
   };
 
-  // Build flat array for lightbox navigation
-  const allPhotosFlat: LayoutPhoto[] = groups.flatMap((g) => g.photos);
+  const handleFolderClick = (path: string) => {
+    setFolder(path);
+    loadPhotos(path);
+  };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  const handleToggleSelect = (path: string) => {
+    setSelectedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectClick = () => {
+    setSelectionMode(true);
+  };
+
+  const handleExitSelection = () => {
+    setSelectionMode(false);
+    setSelectedPaths(new Set());
+  };
+
+  const handleSaveAsAlbum = () => {
+    if (selectedPaths.size === 0) return;
+    setShowAlbumDialog(true);
+  };
+
+  const handleAlbumCreated = (_albumId: string) => {
+    setSelectionMode(false);
+    setSelectedPaths(new Set());
+  };
+
+  const allPhotosFlat: LayoutPhoto[] = groups.flatMap((g) => g.photos);
+  const hasSubfolders = folders.length > 0;
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -411,10 +310,7 @@ export function PhotosPage() {
           {showPathDropdown && (
             <div className="absolute top-full left-0 mt-1 w-72 glass-panel rounded-xl p-1.5 z-50 shadow-2xl border-white/10 max-h-64 overflow-y-auto">
               <button
-                onClick={async () => {
-                  setShowPathDropdown(false);
-                  await handleBrowse();
-                }}
+                onClick={async () => { setShowPathDropdown(false); await handleBrowse(); }}
                 className="w-full text-left px-3 py-2 rounded-lg text-sm text-white hover:bg-white/10 transition-colors"
               >
                 Browse...
@@ -424,11 +320,7 @@ export function PhotosPage() {
                   {savedPaths.map((sp) => (
                     <button
                       key={sp.id}
-                      onClick={() => {
-                        setShowPathDropdown(false);
-                        setFolder(sp.path);
-                        loadPhotos(sp.path);
-                      }}
+                      onClick={() => { setShowPathDropdown(false); setFolder(sp.path); loadPhotos(sp.path); }}
                       className="w-full text-left px-3 py-2 rounded-lg text-sm text-white hover:bg-white/10 transition-colors flex items-center gap-2"
                     >
                       <Bookmark size={13} className="shrink-0 text-[var(--color-text-muted)]" />
@@ -446,6 +338,23 @@ export function PhotosPage() {
 
         {folder && (
           <div className="flex-1 flex items-center gap-3 min-w-0">
+            {selectionMode ? (
+              <button
+                onClick={handleExitSelection}
+                className="flex items-center gap-2 text-sm text-[var(--color-text-muted)] hover:text-white transition-colors"
+              >
+                <X size={16} />
+                Cancel
+              </button>
+            ) : (
+              <button
+                onClick={handleSelectClick}
+                className="flex items-center gap-2 text-sm text-[var(--color-text-muted)] hover:text-white border border-white/10 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <CheckSquare size={14} />
+                Select
+              </button>
+            )}
             <span className="text-[var(--color-text-muted)] text-sm truncate min-w-0 flex-1">
               {folder}
             </span>
@@ -458,23 +367,24 @@ export function PhotosPage() {
           </div>
         )}
 
-        {photos.length > 0 && (
+        {allEntries.length > 0 && !selectionMode && (
           <span className="shrink-0 text-xs text-[var(--color-text-muted)]">
-            {photos.length.toLocaleString()} items
+            {(allEntries.filter(e => !e.isFolder).length).toLocaleString()} items
+            {hasSubfolders && ` · ${folders.length} folders`}
+          </span>
+        )}
+        {selectionMode && (
+          <span className="shrink-0 text-xs text-[var(--color-text-muted)]">
+            {selectedPaths.size} selected
           </span>
         )}
       </div>
 
       {/* ── Body ── */}
       <div className="flex-1 overflow-y-auto" ref={containerRef}>
-        {/* Empty / no folder selected */}
         {!folder && !loading && (
           <div className="flex flex-col items-center justify-center h-full gap-6 text-center px-8">
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center gap-5"
-            >
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center gap-5">
               <div className="w-24 h-24 rounded-3xl bg-[var(--color-primary)]/10 flex items-center justify-center text-[var(--color-primary)]">
                 <FolderOpen size={44} strokeWidth={1.3} />
               </div>
@@ -494,7 +404,6 @@ export function PhotosPage() {
           </div>
         )}
 
-        {/* Loading */}
         {loading && (
           <div className="flex flex-col items-center justify-center h-full gap-4 text-[var(--color-text-muted)]">
             <Loader2 size={36} className="animate-spin text-[var(--color-primary)]" />
@@ -502,72 +411,100 @@ export function PhotosPage() {
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div className="m-6 rounded-xl border border-red-400/20 bg-red-400/10 px-5 py-4 text-sm text-red-200">
             {error}
           </div>
         )}
 
-        {/* No photos found */}
-        {!loading && folder && photos.length === 0 && !error && (
+        {!loading && folder && allEntries.length === 0 && !error && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--color-text-muted)]">
             <ImageOff size={40} strokeWidth={1.3} />
-            <p className="text-sm">No images or videos found in this folder.</p>
+            <p className="text-sm">No images, videos, or folders found here.</p>
           </div>
         )}
 
         {/* ── Gallery ── */}
-        {!loading && groups.length > 0 && (
-          <div className="px-4 py-4 space-y-8">
-            {groups.map((group) => {
-              // Build a justified multi-row layout for this group
-              const rows: LayoutPhoto[][] = [];
-              let currentRow: LayoutPhoto[] = [];
-              let rowWidth = 0;
-              const gap = GRID_GAP;
-
-              for (const photo of group.photos) {
-                const photoW = (photo.displayWidth / photo.displayHeight) * TARGET_ROW_HEIGHT;
-                if (rowWidth + photoW + gap > containerWidth && currentRow.length > 0) {
-                  rows.push(currentRow);
-                  currentRow = [photo];
-                  rowWidth = photoW + gap;
-                } else {
-                  currentRow.push(photo);
-                  rowWidth += photoW + gap;
-                }
-              }
-              if (currentRow.length > 0) rows.push(currentRow);
-
-              // Compute global offset for this group's photos within allPhotosFlat
-              const groupStart = allPhotosFlat.indexOf(group.photos[0]);
-
-              return (
-                <div key={group.dateKey}>
-                  {/* Date header */}
-                  <h3 className="text-white font-semibold text-base mb-3 sticky top-0 z-10 py-1 bg-[var(--color-base)]/80 backdrop-blur-sm">
-                    {group.label}
-                  </h3>
-
-                  {/* Rows */}
-                  <div className="flex flex-col" style={{ gap: GRID_GAP }}>
-                    {rows.map((row, rowIdx) => {
-                      const rowOffset = groupStart + rows.slice(0, rowIdx).reduce((s, r) => s + r.length, 0);
-                      return (
-                        <PhotoRow
-                          key={rowIdx}
-                          photos={row}
-                          containerWidth={containerWidth - 32}
-                          globalOffset={rowOffset}
-                          onOpen={(idx) => setLightboxIndex(idx)}
-                        />
-                      );
-                    })}
-                  </div>
+        {!loading && (folders.length > 0 || groups.length > 0) && (
+          <div className="px-4 py-4">
+            {/* Subfolder tiles */}
+            {folders.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-white font-semibold text-sm mb-3 text-[var(--color-text-muted)] uppercase tracking-wider">
+                  Folders
+                </h3>
+                <div className="flex flex-wrap gap-3">
+                  {folders.map((folderTile) => (
+                    <PhotoTile
+                      key={folderTile.path}
+                      photo={folderTile}
+                      isSelected={false}
+                      selectionMode={false}
+                      onOpen={() => {}}
+                      onToggleSelect={() => {}}
+                      onSelectClick={() => {}}
+                      onFolderClick={() => handleFolderClick(folderTile.path)}
+                      gap={0}
+                    />
+                  ))}
                 </div>
-              );
-            })}
+              </div>
+            )}
+
+            {/* Date-grouped photos */}
+            {groups.length > 0 && (
+              <div className="space-y-8">
+                {groups.map((group) => {
+                  const rows: LayoutPhoto[][] = [];
+                  let currentRow: LayoutPhoto[] = [];
+                  let rowWidth = 0;
+
+                  for (const photo of group.photos) {
+                    const photoW = (photo.displayWidth / photo.displayHeight) * TARGET_ROW_HEIGHT;
+                    if (rowWidth + photoW + GRID_GAP > containerWidth && currentRow.length > 0) {
+                      rows.push(currentRow);
+                      currentRow = [photo];
+                      rowWidth = photoW + GRID_GAP;
+                    } else {
+                      currentRow.push(photo);
+                      rowWidth += photoW + GRID_GAP;
+                    }
+                  }
+                  if (currentRow.length > 0) rows.push(currentRow);
+
+                  const groupStart = allPhotosFlat.indexOf(group.photos[0]);
+
+                  return (
+                    <div key={group.dateKey}>
+                      <h3 className="text-white font-semibold text-base mb-3 sticky top-0 z-10 py-1 bg-[var(--color-base)]/80 backdrop-blur-sm">
+                        {group.label}
+                      </h3>
+                      <div className="flex flex-col" style={{ gap: GRID_GAP }}>
+                        {rows.map((row, rowIdx) => {
+                          const rowOffset = groupStart + rows.slice(0, rowIdx).reduce((s, r) => s + r.length, 0);
+                          return (
+                            <div key={rowIdx} className="flex" style={{ gap: GRID_GAP }}>
+                              {row.map((photo, i) => (
+                                <PhotoTile
+                                  key={photo.path}
+                                  photo={photo}
+                                  isSelected={selectedPaths.has(photo.path)}
+                                  selectionMode={selectionMode}
+                                  onOpen={() => setLightboxIndex(rowOffset + i)}
+                                  onToggleSelect={() => handleToggleSelect(photo.path)}
+                                  onSelectClick={handleSelectClick}
+                                  gap={GRID_GAP}
+                                />
+                              ))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -580,14 +517,42 @@ export function PhotosPage() {
             index={lightboxIndex}
             onClose={() => setLightboxIndex(null)}
             onPrev={() => setLightboxIndex((i) => (i !== null && i > 0 ? i - 1 : i))}
-            onNext={() =>
-              setLightboxIndex((i) =>
-                i !== null && i < allPhotosFlat.length - 1 ? i + 1 : i,
-              )
-            }
+            onNext={() => setLightboxIndex((i) => (i !== null && i < allPhotosFlat.length - 1 ? i + 1 : i))}
           />
         )}
       </AnimatePresence>
+
+      {/* ── Floating Selection Bar ── */}
+      <AnimatePresence>
+        {selectionMode && selectedPaths.size > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 glass-panel rounded-2xl px-5 py-3 border border-white/10 shadow-2xl flex items-center gap-4"
+          >
+            <span className="text-sm text-white font-medium whitespace-nowrap">
+              <strong>{selectedPaths.size}</strong> selected
+            </span>
+            <div className="w-px h-6 bg-white/10" />
+            <button
+              onClick={handleSaveAsAlbum}
+              className="flex items-center gap-2 rounded-xl bg-[var(--color-primary)] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90"
+            >
+              <Image size={14} />
+              Save as Album
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Create Album Dialog ── */}
+      <CreateAlbumDialog
+        open={showAlbumDialog}
+        onClose={() => setShowAlbumDialog(false)}
+        selectedPaths={Array.from(selectedPaths)}
+        onCreated={handleAlbumCreated}
+      />
     </div>
   );
 }

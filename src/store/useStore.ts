@@ -3,10 +3,13 @@ import { create } from 'zustand';
 interface StoreState {
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
-  
-  currentView: 'timeline' | 'grid' | 'map' | 'albums' | 'favorites' | 'years' | 'trash' | 'scan' | 'duplicates' | 'settings';
+
+  currentView: 'timeline' | 'grid' | 'map' | 'albums' | 'favorites' | 'years' | 'trash' | 'scan' | 'duplicates' | 'settings' | 'album-detail';
   setCurrentView: (view: StoreState['currentView']) => void;
-  
+
+  selectedAlbumId: string | null;
+  setSelectedAlbumId: (id: string | null) => void;
+
   searchQuery: string;
   setSearchQuery: (q: string) => void;
 }
@@ -14,15 +17,17 @@ interface StoreState {
 export const useStore = create<StoreState>((set) => ({
   isSidebarOpen: true,
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
-  
+
   currentView: 'scan',
   setCurrentView: (view) => set({ currentView: view }),
-  
+
+  selectedAlbumId: null,
+  setSelectedAlbumId: (id) => set({ selectedAlbumId: id }),
+
   searchQuery: '',
   setSearchQuery: (searchQuery) => set({ searchQuery }),
 }));
 
-// Progress store separate for performance (frequent updates)
 interface ProgressState {
   isScanning: boolean;
   scanned: number;

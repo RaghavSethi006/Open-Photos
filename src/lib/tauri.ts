@@ -134,18 +134,6 @@ export async function resolveDuplicates(options: DuplicateResolveOptions): Promi
   return invoke('resolve_duplicates', { options });
 }
 
-export interface PhotoEntry {
-  path: string;
-  name: string;
-  sizeBytes: number;
-  modifiedMs: number;
-  isVideo: boolean;
-}
-
-export async function listPhotos(folder: string): Promise<PhotoEntry[]> {
-  return invoke('list_photos', { folder });
-}
-
 // ─── Trash ───────────────────────────────────────────────────────────────────
 
 export interface TrashEntry {
@@ -176,4 +164,57 @@ export async function listTrashFolder(trashFolder: string): Promise<TrashEntry[]
 
 export async function restoreFilesFromTrash(paths: string[], trashFolder: string): Promise<string[]> {
   return invoke('restore_files_from_trash', { paths, trashFolder });
+}
+
+// ─── Albums ──────────────────────────────────────────────────────────────────
+
+export interface Album {
+  id: string;
+  name: string;
+  description: string;
+  coverPath: string;
+  createdAt: number;
+  photoPaths: string[];
+}
+
+export async function createAlbum(name: string, description: string, photoPaths: string[]): Promise<Album> {
+  return invoke('create_album', { name, description, photoPaths });
+}
+
+export async function listAlbums(): Promise<Album[]> {
+  return invoke('list_albums');
+}
+
+export async function getAlbum(id: string): Promise<Album | null> {
+  return invoke('get_album', { id });
+}
+
+export async function deleteAlbum(id: string): Promise<void> {
+  return invoke('delete_album', { id });
+}
+
+export async function renameAlbum(id: string, name: string): Promise<Album> {
+  return invoke('rename_album', { id, name });
+}
+
+export async function addPhotosToAlbum(id: string, photoPaths: string[]): Promise<Album> {
+  return invoke('add_photos_to_album', { id, photoPaths });
+}
+
+export async function removePhotosFromAlbum(id: string, photoPaths: string[]): Promise<Album> {
+  return invoke('remove_photos_from_album', { id, photoPaths });
+}
+
+// Update PhotoEntry to include is_folder
+export interface PhotoEntry {
+  path: string;
+  name: string;
+  sizeBytes: number;
+  modifiedMs: number;
+  isVideo: boolean;
+  isFolder?: boolean;
+}
+
+export async function listPhotos(folder: string): Promise<PhotoEntry[]> {
+  return invoke('list_photos', { folder });
 }
