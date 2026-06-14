@@ -10,6 +10,9 @@ interface StoreState {
   selectedAlbumId: string | null;
   setSelectedAlbumId: (id: string | null) => void;
 
+  pendingFolder: string | null;
+  setPendingFolder: (path: string | null) => void;
+
   searchQuery: string;
   setSearchQuery: (q: string) => void;
 }
@@ -23,6 +26,9 @@ export const useStore = create<StoreState>((set) => ({
 
   selectedAlbumId: null,
   setSelectedAlbumId: (id) => set({ selectedAlbumId: id }),
+
+  pendingFolder: null,
+  setPendingFolder: (path) => set({ pendingFolder: path }),
 
   searchQuery: '',
   setSearchQuery: (searchQuery) => set({ searchQuery }),

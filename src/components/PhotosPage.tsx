@@ -16,11 +16,29 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { listPhotos, isTauriRuntime, type PhotoEntry } from '../lib/tauri';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useSavedPathsStore } from '../store/useSavedPathsStore';
+import { useStore } from '../store/useStore';
 import { PhotoTile, type LayoutPhoto } from './PhotoTile';
 import { CreateAlbumDialog } from './CreateAlbumDialog';
 
 const TARGET_ROW_HEIGHT = 240;
 const GRID_GAP = 4;
+
+function justifyRow(
+  photos: LayoutPhoto[],
+  containerWidth: number,
+  targetHeight: number,
+  gap: number,
+): LayoutPhoto[] {
+  if (photos.length === 0) return photos;
+  const totalAspect = photos.reduce((sum, p) => sum + p.displayWidth / p.displayHeight, 0);
+  const totalGaps = gap * (photos.length - 1);
+  const rowHeight = Math.min((containerWidth - totalGaps) / totalAspect, targetHeight * 1.5);
+  return photos.map((p) => ({
+    ...p,
+    displayWidth: Math.floor((p.displayWidth / p.displayHeight) * rowHeight),
+    displayHeight: Math.floor(rowHeight),
+  }));
+}
 
 function formatDateLabel(ms: number): string {
   const d = new Date(ms);
@@ -130,8 +148,6 @@ export function PhotosPage() {
   const [folder, setFolder] = useState<string>('');
   const [showPathDropdown, setShowPathDropdown] = useState(false);
   const [allEntries, setAllEntries] = useState<PhotoEntry[]>([]);
-  const [, setPhotos] = useState<LayoutPhoto[]>([]);
-  const [folders, setFolders] = useState<LayoutPhoto[]>([]);
   const [groups, setGroups] = useState<{ label: string; dateKey: string; photos: LayoutPhoto[] }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -168,17 +184,12 @@ export function PhotosPage() {
   const buildLayout = useCallback((entries: PhotoEntry[]): LayoutPhoto[] => {
     const layout: LayoutPhoto[] = [];
     for (const e of entries) {
-      let aspect: number;
-      if (e.isFolder) {
-        aspect = 1;
-      } else {
-        aspect = guessAspect(e.name);
-      }
+      const aspect = guessAspect(e.name);
       layout.push({
         ...e,
-        src: e.isFolder ? '' : (isTauriRuntime() ? convertFileSrc(e.path) : e.path),
+        src: isTauriRuntime() ? convertFileSrc(e.path) : e.path,
         displayWidth: Math.round(TARGET_ROW_HEIGHT * aspect),
-        displayHeight: e.isFolder ? 100 : TARGET_ROW_HEIGHT,
+        displayHeight: TARGET_ROW_HEIGHT,
       });
     }
     return layout;
@@ -196,36 +207,21 @@ export function PhotosPage() {
     return Array.from(map.values());
   }, []);
 
-  const organizeEntries = useCallback((entries: PhotoEntry[]) => {
-    const folderEntries: PhotoEntry[] = [];
-    const photoEntries: PhotoEntry[] = [];
-    for (const e of entries) {
-      if (e.isFolder) {
-        folderEntries.push(e);
-      } else {
-        photoEntries.push(e);
-      }
-    }
-    const folderLayout = buildLayout(folderEntries);
-    const photoLayout = buildLayout(photoEntries);
-    const photoGroups = groupByDate(photoLayout);
-    return { folders: folderLayout, groups: photoGroups, allEntries: entries };
-  }, [buildLayout, groupByDate]);
-
   const loadPhotos = async (dir: string) => {
     setLoading(true);
     setError(null);
-    setPhotos([]);
-    setFolders([]);
+    setAllEntries([]);
     setGroups([]);
     setSelectionMode(false);
     setSelectedPaths(new Set());
     try {
       const entries = await listPhotos(dir);
-      const { folders: f, groups: g, allEntries } = organizeEntries(entries);
-      setAllEntries(allEntries);
-      setFolders(f);
-      setGroups(g);
+      // Filter out folders — only show photos (folders appear as temp albums in AlbumsPage)
+      const photoEntries = entries.filter((e) => !e.isFolder);
+      setAllEntries(photoEntries);
+      const layout = buildLayout(photoEntries);
+      const photoGroups = groupByDate(layout);
+      setGroups(photoGroups);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -245,20 +241,19 @@ export function PhotosPage() {
     }
   };
 
+  const { pendingFolder, setPendingFolder } = useStore();
+
   useEffect(() => {
-    if (defaultFolder && !folder) {
-      setFolder(defaultFolder);
-      loadPhotos(defaultFolder);
+    const target = pendingFolder || defaultFolder;
+    if (target && !folder) {
+      setFolder(target);
+      loadPhotos(target);
+      if (pendingFolder) setPendingFolder(null);
     }
   }, []);
 
   const handleReload = () => {
     if (folder) loadPhotos(folder);
-  };
-
-  const handleFolderClick = (path: string) => {
-    setFolder(path);
-    loadPhotos(path);
   };
 
   const handleToggleSelect = (path: string) => {
@@ -293,7 +288,6 @@ export function PhotosPage() {
   };
 
   const allPhotosFlat: LayoutPhoto[] = groups.flatMap((g) => g.photos);
-  const hasSubfolders = folders.length > 0;
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -369,8 +363,7 @@ export function PhotosPage() {
 
         {allEntries.length > 0 && !selectionMode && (
           <span className="shrink-0 text-xs text-[var(--color-text-muted)]">
-            {(allEntries.filter(e => !e.isFolder).length).toLocaleString()} items
-            {hasSubfolders && ` · ${folders.length} folders`}
+            {allEntries.length.toLocaleString()} items
           </span>
         )}
         {selectionMode && (
@@ -420,91 +413,63 @@ export function PhotosPage() {
         {!loading && folder && allEntries.length === 0 && !error && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--color-text-muted)]">
             <ImageOff size={40} strokeWidth={1.3} />
-            <p className="text-sm">No images, videos, or folders found here.</p>
+            <p className="text-sm">No images or videos found here.</p>
           </div>
         )}
 
-        {/* ── Gallery ── */}
-        {!loading && (folders.length > 0 || groups.length > 0) && (
-          <div className="px-4 py-4">
-            {/* Subfolder tiles */}
-            {folders.length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-white font-semibold text-sm mb-3 text-[var(--color-text-muted)] uppercase tracking-wider">
-                  Folders
-                </h3>
-                <div className="flex flex-wrap gap-3">
-                  {folders.map((folderTile) => (
-                    <PhotoTile
-                      key={folderTile.path}
-                      photo={folderTile}
-                      isSelected={false}
-                      selectionMode={false}
-                      onOpen={() => {}}
-                      onToggleSelect={() => {}}
-                      onSelectClick={() => {}}
-                      onFolderClick={() => handleFolderClick(folderTile.path)}
-                      gap={0}
-                    />
-                  ))}
+        {/* ── Gallery — date-grouped, Google Photos justified layout ── */}
+        {!loading && groups.length > 0 && (
+          <div className="px-4 py-4 space-y-8">
+            {groups.map((group) => {
+              const rows: LayoutPhoto[][] = [];
+              let currentRow: LayoutPhoto[] = [];
+              let rowWidth = 0;
+
+              for (const photo of group.photos) {
+                const photoW = (photo.displayWidth / photo.displayHeight) * TARGET_ROW_HEIGHT;
+                if (rowWidth + photoW + GRID_GAP > containerWidth && currentRow.length > 0) {
+                  rows.push(currentRow);
+                  currentRow = [photo];
+                  rowWidth = photoW + GRID_GAP;
+                } else {
+                  currentRow.push(photo);
+                  rowWidth += photoW + GRID_GAP;
+                }
+              }
+              if (currentRow.length > 0) rows.push(currentRow);
+
+              const groupStart = allPhotosFlat.indexOf(group.photos[0]);
+
+              return (
+                <div key={group.dateKey}>
+                  <h3 className="text-white font-semibold text-base mb-3 sticky top-0 z-10 py-1 bg-[var(--color-base)]/80 backdrop-blur-sm">
+                    {group.label}
+                  </h3>
+                  <div className="flex flex-col" style={{ gap: GRID_GAP }}>
+                    {rows.map((row, rowIdx) => {
+                      const justified = justifyRow(row, containerWidth, TARGET_ROW_HEIGHT, GRID_GAP);
+                      const rowOffset = groupStart + rows.slice(0, rowIdx).reduce((s, r) => s + r.length, 0);
+                      return (
+                        <div key={rowIdx} className="flex" style={{ gap: GRID_GAP }}>
+                          {justified.map((photo, i) => (
+                            <PhotoTile
+                              key={photo.path}
+                              photo={photo}
+                              isSelected={selectedPaths.has(photo.path)}
+                              selectionMode={selectionMode}
+                              onOpen={() => setLightboxIndex(rowOffset + i)}
+                              onToggleSelect={() => handleToggleSelect(photo.path)}
+                              onSelectClick={handleSelectClick}
+                              gap={GRID_GAP}
+                            />
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
-
-            {/* Date-grouped photos */}
-            {groups.length > 0 && (
-              <div className="space-y-8">
-                {groups.map((group) => {
-                  const rows: LayoutPhoto[][] = [];
-                  let currentRow: LayoutPhoto[] = [];
-                  let rowWidth = 0;
-
-                  for (const photo of group.photos) {
-                    const photoW = (photo.displayWidth / photo.displayHeight) * TARGET_ROW_HEIGHT;
-                    if (rowWidth + photoW + GRID_GAP > containerWidth && currentRow.length > 0) {
-                      rows.push(currentRow);
-                      currentRow = [photo];
-                      rowWidth = photoW + GRID_GAP;
-                    } else {
-                      currentRow.push(photo);
-                      rowWidth += photoW + GRID_GAP;
-                    }
-                  }
-                  if (currentRow.length > 0) rows.push(currentRow);
-
-                  const groupStart = allPhotosFlat.indexOf(group.photos[0]);
-
-                  return (
-                    <div key={group.dateKey}>
-                      <h3 className="text-white font-semibold text-base mb-3 sticky top-0 z-10 py-1 bg-[var(--color-base)]/80 backdrop-blur-sm">
-                        {group.label}
-                      </h3>
-                      <div className="flex flex-col" style={{ gap: GRID_GAP }}>
-                        {rows.map((row, rowIdx) => {
-                          const rowOffset = groupStart + rows.slice(0, rowIdx).reduce((s, r) => s + r.length, 0);
-                          return (
-                            <div key={rowIdx} className="flex" style={{ gap: GRID_GAP }}>
-                              {row.map((photo, i) => (
-                                <PhotoTile
-                                  key={photo.path}
-                                  photo={photo}
-                                  isSelected={selectedPaths.has(photo.path)}
-                                  selectionMode={selectionMode}
-                                  onOpen={() => setLightboxIndex(rowOffset + i)}
-                                  onToggleSelect={() => handleToggleSelect(photo.path)}
-                                  onSelectClick={handleSelectClick}
-                                  gap={GRID_GAP}
-                                />
-                              ))}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+              );
+            })}
           </div>
         )}
       </div>
