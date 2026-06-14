@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod commands;
 pub mod metadata;
 pub mod scanner;
@@ -32,6 +33,16 @@ pub fn run() {
             commands::favorites::remove_favorite,
             commands::favorites::list_favorites,
             commands::metadata::get_photo_metadata,
+            commands::faces::check_face_models,
+            commands::faces::scan_faces,
+            commands::faces::cluster_faces,
+            commands::faces::list_people,
+            commands::faces::name_person,
+            commands::faces::rename_person,
+            commands::faces::merge_people,
+            commands::faces::delete_person,
+            commands::faces::get_person_photos,
+            commands::faces::get_photo_faces,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
