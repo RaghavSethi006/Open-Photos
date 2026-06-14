@@ -31,6 +31,7 @@ pub fn run() {
             commands::favorites::add_favorite,
             commands::favorites::remove_favorite,
             commands::favorites::list_favorites,
+            commands::metadata::get_photo_metadata,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -219,6 +219,29 @@ export async function listPhotos(folder: string): Promise<PhotoEntry[]> {
   return invoke('list_photos', { folder });
 }
 
+// ─── Photo Metadata ──────────────────────────────────────────────────────────
+
+export interface PhotoMetadata {
+  dateTaken: number | null;
+  width: number | null;
+  height: number | null;
+  cameraMake: string | null;
+  cameraModel: string | null;
+  aperture: string | null;
+  shutterSpeed: string | null;
+  iso: number | null;
+  focalLength: string | null;
+  gpsLat: number | null;
+  gpsLng: number | null;
+  gpsLatRef: string | null;
+  gpsLngRef: string | null;
+  orientation: number | null;
+}
+
+export async function getPhotoMetadata(path: string): Promise<PhotoMetadata> {
+  return invoke('get_photo_metadata', { path });
+}
+
 // ─── Favorites ───────────────────────────────────────────────────────────────
 
 export async function addFavorite(path: string): Promise<void> {

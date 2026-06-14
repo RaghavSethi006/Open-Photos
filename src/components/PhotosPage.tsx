@@ -11,6 +11,7 @@ import {
   Bookmark,
   CheckSquare,
   Image,
+  Info,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { listPhotos, isTauriRuntime, moveFilesToTrash, type PhotoEntry } from '../lib/tauri';
@@ -21,6 +22,7 @@ import { useFavoritesStore } from '../store/useFavoritesStore';
 import { useToastStore } from '../store/useToastStore';
 import { PhotoTile, type LayoutPhoto } from './PhotoTile';
 import { CreateAlbumDialog } from './CreateAlbumDialog';
+import { PhotoInfoPanel } from './PhotoInfoPanel';
 
 const TARGET_ROW_HEIGHT = 240;
 const GRID_GAP = 4;
@@ -78,6 +80,11 @@ function Lightbox({
   onNext: () => void;
 }) {
   const photo = photos[index];
+  const [showInfo, setShowInfo] = useState(false);
+
+  useEffect(() => {
+    setShowInfo(false);
+  }, [index]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -106,6 +113,14 @@ function Lightbox({
         className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
       >
         <X size={20} />
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); setShowInfo(!showInfo); }}
+        className={`absolute top-4 right-16 z-10 p-2 rounded-full transition-colors ${
+          showInfo ? 'bg-[var(--color-primary)] text-white' : 'bg-white/10 hover:bg-white/20 text-white'
+        }`}
+      >
+        <Info size={18} />
       </button>
       <div className="absolute bottom-0 left-0 right-0 z-10 px-6 py-4 bg-gradient-to-t from-black/70 to-transparent">
         <p className="text-white font-medium text-sm truncate">{photo.name}</p>
@@ -139,6 +154,7 @@ function Lightbox({
       <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white/70 text-xs px-3 py-1.5 rounded-full">
         {index + 1} / {photos.length}
       </div>
+      <PhotoInfoPanel path={photo.path} open={showInfo} onClose={() => setShowInfo(false)} />
     </motion.div>
   );
 }
