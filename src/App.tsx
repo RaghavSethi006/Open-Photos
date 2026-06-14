@@ -11,6 +11,7 @@ import { TrashPage } from './components/TrashPage';
 import { AlbumsPage } from './components/AlbumsPage';
 import { AlbumDetailPage } from './components/AlbumDetailPage';
 import { FavoritesPage } from './components/FavoritesPage';
+import { YearsPage } from './components/YearsPage';
 import { setupTauriListeners, cleanupTrashFolder } from './lib/tauri';
 import { useStore } from './store/useStore';
 import { useSettingsStore } from './store/useSettingsStore';
@@ -75,7 +76,7 @@ function App() {
             {currentView === 'albums' && <AlbumsPage />}
             {currentView === 'album-detail' && <AlbumDetailPage />}
             {currentView === 'favorites' && <FavoritesPage />}
-            {currentView === 'years' && <div className="flex items-center justify-center h-full text-[var(--color-text-muted)]">Years View Placeholder</div>}
+            {currentView === 'years' && <YearsPage />}
             {currentView === 'trash' && <TrashPage />}
           </div>
         </main>
