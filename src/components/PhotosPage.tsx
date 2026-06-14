@@ -252,7 +252,7 @@ function Lightbox({
       </div>
 
       {/* Counter */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white/70 text-xs px-3 py-1.5 rounded-full">
+      <div className="absolute bottom-[3.5rem] left-1/2 -translate-x-1/2 bg-black/50 text-white/70 text-xs px-3 py-1.5 rounded-full">
         {index + 1} / {photos.length}
         {slideshow && <span className="ml-2 text-[var(--color-primary)]">●</span>}
       </div>

@@ -422,8 +422,8 @@ export function DuplicatesPage() {
           </div>
         )}
 
-        {/* Error alert */}
-        {error && (
+        {/* Error alert (hidden when duplicate review is visible; shown contextually near footer) */}
+        {error && !duplicateSets && (
           <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200 flex items-center gap-3">
             <AlertCircle size={18} className="shrink-0" />
             <span>{error}</span>
@@ -464,6 +464,14 @@ export function DuplicatesPage() {
         {/* Duplicate Review List */}
         {duplicateSets && duplicateSets.length > 0 && !resolving && (
           <div className="flex flex-col gap-6">
+
+            {/* Error alert (contextual, near footer) */}
+            {error && (
+              <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200 flex items-center gap-3">
+                <AlertCircle size={18} className="shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
 
             {/* Summary banner */}
             <div className="glass-panel rounded-2xl p-6 bg-gradient-to-r from-[var(--color-primary)]/10 to-transparent border-l-4 border-l-[var(--color-primary)] flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-start">
