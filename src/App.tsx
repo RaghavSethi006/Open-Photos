@@ -14,8 +14,10 @@ import { FavoritesPage } from './components/FavoritesPage';
 import { setupTauriListeners, cleanupTrashFolder } from './lib/tauri';
 import { useStore } from './store/useStore';
 import { useSettingsStore } from './store/useSettingsStore';
+import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
 
 function App() {
+  useGlobalShortcuts();
   const { currentView, setCurrentView } = useStore();
   const { accentColor, theme, startupView } = useSettingsStore();
 
