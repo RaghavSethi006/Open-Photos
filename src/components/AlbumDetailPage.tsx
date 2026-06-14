@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { open } from '@tauri-apps/plugin-dialog';
 import {
   ArrowLeft,
   Trash2,
@@ -12,11 +13,13 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertCircle,
+  CheckSquare,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { isTauriRuntime } from '../lib/tauri';
+import { isTauriRuntime, listPhotos } from '../lib/tauri';
 import { useAlbumsStore } from '../store/useAlbumsStore';
 import { useStore } from '../store/useStore';
+import { useToastStore } from '../store/useToastStore';
 
 const ZERO_GAP = 0;
 const TARGET_ROW_HEIGHT = 240;
@@ -122,6 +125,7 @@ export function AlbumDetailPage() {
   const [newName, setNewName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const addToast = useToastStore((s) => s.addToast);
 
   // Load album data
   useEffect(() => {
@@ -174,6 +178,25 @@ export function AlbumDetailPage() {
     });
     setAlbumPhotos(photos);
   }, []);
+
+  // Add photos to album
+  const handleAddPhotos = async () => {
+    if (!album) return;
+    try {
+      const selected = await open({ directory: true, multiple: false });
+      if (!selected || typeof selected !== 'string') return;
+      const entries = await listPhotos(selected);
+      const photoPaths = entries.filter((e) => !e.isFolder).map((e) => e.path);
+      if (photoPaths.length === 0) {
+        addToast({ type: 'info', message: 'No photos found in that folder.' });
+        return;
+      }
+      await addPhotos(album.id, photoPaths);
+      addToast({ type: 'success', message: `Added ${photoPaths.length} photo(s) from folder.` });
+    } catch (err) {
+      addToast({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
 
   // Remove photo from album
   const handleRemovePhoto = async (path: string) => {
@@ -290,9 +313,8 @@ export function AlbumDetailPage() {
         {album && (
           <div className="flex items-center gap-2">
             <button
-              disabled
-              className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]/50 border border-white/5 px-3 py-1.5 rounded-lg cursor-not-allowed"
-              title="Coming soon"
+              onClick={handleAddPhotos}
+              className="flex items-center gap-2 text-xs text-white border border-white/10 px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
             >
               <Plus size={14} />
               Add
