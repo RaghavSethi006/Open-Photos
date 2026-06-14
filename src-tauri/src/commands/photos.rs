@@ -59,7 +59,7 @@ pub fn list_photos(folder: String) -> Result<Vec<PhotoEntry>, String> {
         }
     }
 
-    // Collect media files (recursive, but skip subdirectories)
+    // Collect all media files recursively from all subdirectories
     for entry in WalkDir::new(&root)
         .follow_links(false)
         .into_iter()
@@ -70,14 +70,6 @@ pub fn list_photos(folder: String) -> Result<Vec<PhotoEntry>, String> {
         }
 
         let path = entry.path();
-
-        // Skip files in subdirectories (already collected as folder entries)
-        if let Some(parent) = path.parent() {
-            if parent != root {
-                continue;
-            }
-        }
-
         let ext = path
             .extension()
             .and_then(|e| e.to_str())
