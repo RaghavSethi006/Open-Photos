@@ -12,6 +12,7 @@ import { AlbumsPage } from './components/AlbumsPage';
 import { AlbumDetailPage } from './components/AlbumDetailPage';
 import { FavoritesPage } from './components/FavoritesPage';
 import { YearsPage } from './components/YearsPage';
+import { MapPage } from './components/MapPage';
 import { setupTauriListeners, cleanupTrashFolder } from './lib/tauri';
 import { useStore } from './store/useStore';
 import { useSettingsStore } from './store/useSettingsStore';
@@ -72,7 +73,7 @@ function App() {
             {currentView === 'settings' && <SettingsPage />}
             {currentView === 'timeline' && <PhotosPage />}
             {currentView === 'grid' && <PhotosPage />}
-            {currentView === 'map' && <div className="flex items-center justify-center h-full text-[var(--color-text-muted)]">Map View Placeholder</div>}
+            {currentView === 'map' && <MapPage />}
             {currentView === 'albums' && <AlbumsPage />}
             {currentView === 'album-detail' && <AlbumDetailPage />}
             {currentView === 'favorites' && <FavoritesPage />}
