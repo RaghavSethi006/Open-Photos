@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FolderOpen,
+  Folder,
   X,
   ChevronLeft,
   ChevronRight,
@@ -25,6 +26,7 @@ import { useFavoritesStore } from '../store/useFavoritesStore';
 import { useToastStore } from '../store/useToastStore';
 import { PhotoTile, type LayoutPhoto } from './PhotoTile';
 import { CreateAlbumDialog } from './CreateAlbumDialog';
+import { AddToAlbumDialog } from './AddToAlbumDialog';
 import { PhotoInfoPanel } from './PhotoInfoPanel';
 
 const TARGET_ROW_HEIGHT = 240;
@@ -278,6 +280,7 @@ export function PhotosPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [showAlbumDialog, setShowAlbumDialog] = useState(false);
+  const [showAddToAlbumDialog, setShowAddToAlbumDialog] = useState(false);
 
   const { searchQuery, sortBy } = useStore();
   const { paths: favPaths, toggle: toggleFavorite, loadFavorites } = useFavoritesStore();
@@ -694,6 +697,13 @@ export function PhotosPage() {
               <Image size={14} />
               Save as Album
             </button>
+            <button
+              onClick={() => setShowAddToAlbumDialog(true)}
+              className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-white/20"
+            >
+              <Folder size={14} />
+              Add to Album
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -704,6 +714,11 @@ export function PhotosPage() {
         onClose={() => setShowAlbumDialog(false)}
         selectedPaths={Array.from(selectedPaths)}
         onCreated={handleAlbumCreated}
+      />
+      <AddToAlbumDialog
+        open={showAddToAlbumDialog}
+        onClose={() => setShowAddToAlbumDialog(false)}
+        selectedPaths={Array.from(selectedPaths)}
       />
     </div>
   );
