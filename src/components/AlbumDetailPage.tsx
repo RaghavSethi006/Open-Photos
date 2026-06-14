@@ -13,7 +13,6 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertCircle,
-  CheckSquare,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { isTauriRuntime, listPhotos } from '../lib/tauri';
@@ -114,7 +113,7 @@ function Lightbox({ photos, index, onClose, onPrev, onNext }: {
 
 export function AlbumDetailPage() {
   const { selectedAlbumId, setCurrentView } = useStore();
-  const { albums, loadAlbums, removePhotos, deleteAlbum, renameAlbum } = useAlbumsStore();
+  const { albums, loadAlbums, removePhotos, deleteAlbum, renameAlbum, addPhotos } = useAlbumsStore();
 
   const [album, setAlbum] = useState<typeof albums[0] | null>(null);
   const [albumPhotos, setAlbumPhotos] = useState<AlbumPhoto[]>([]);

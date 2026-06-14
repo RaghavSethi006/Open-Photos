@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Camera, Maximize, Aperture, Clock, Sun, Crosshair, MapPin, Info } from 'lucide-react';
-import { getPhotoMetadata, type PhotoMetadata, isTauriRuntime } from '../lib/tauri';
+import { getPhotoMetadata, type PhotoMetadata } from '../lib/tauri';
 
 interface Props {
   path: string;
@@ -12,13 +12,6 @@ interface Props {
 function formatDate(ts: number | null): string {
   if (!ts) return 'Unknown';
   return new Date(ts * 1000).toLocaleString();
-}
-
-function formatBytes(bytes: number | null): string {
-  if (!bytes) return 'Unknown';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function PhotoInfoPanel({ path, open, onClose }: Props) {

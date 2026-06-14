@@ -12,7 +12,6 @@ import {
   Eye,
   Star as StarIcon,
   Copy,
-  ExternalLink,
   Trash2,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';

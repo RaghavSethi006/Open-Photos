@@ -90,7 +90,6 @@ function Lightbox({
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
 
   // Slideshow
   const [slideshow, setSlideshow] = useState(false);
@@ -142,7 +141,6 @@ function Lightbox({
     e.preventDefault();
     setDragging(true);
     setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
-    setDragPos({ x: e.clientX, y: e.clientY });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -333,7 +331,6 @@ export function PhotosPage() {
     setLoading(true);
     setError(null);
     setAllEntries([]);
-    setGroups([]);
     setSelectionMode(false);
     setSelectedPaths(new Set());
     try {

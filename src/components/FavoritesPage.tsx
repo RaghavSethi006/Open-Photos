@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { open } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { FolderOpen, ImageOff, Loader2, Star, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { FolderOpen, Loader2, Star, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { listPhotos, isTauriRuntime, type PhotoEntry } from '../lib/tauri';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useFavoritesStore } from '../store/useFavoritesStore';

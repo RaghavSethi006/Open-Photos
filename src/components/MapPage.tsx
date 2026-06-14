@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { FolderOpen, Loader2, MapPin, Navigation } from 'lucide-react';
@@ -9,7 +9,6 @@ import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import { listPhotos, getPhotoMetadata, isTauriRuntime, type PhotoEntry } from '../lib/tauri';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { useStore } from '../store/useStore';
 
 interface GeoPhoto {
   path: string;
@@ -28,7 +27,6 @@ L.Icon.Default.mergeOptions({ iconUrl, iconRetinaUrl, shadowUrl });
 
 export function MapPage() {
   const { defaultFolder } = useSettingsStore();
-  const { setCurrentView } = useStore();
   const [folder, setFolder] = useState('');
   const [allEntries, setAllEntries] = useState<PhotoEntry[]>([]);
   const [loading, setLoading] = useState(false);

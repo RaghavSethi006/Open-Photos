@@ -58,7 +58,7 @@ export function YearsPage() {
     return Array.from(map.entries()).sort((a, b) => b[0] - a[0]);
   }, [allEntries]);
 
-  const handleYearClick = (year: number) => {
+  const handleYearClick = (_year: number) => {
     if (folder) {
       setPendingFolder(folder);
     }
