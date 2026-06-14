@@ -9,10 +9,13 @@ import {
   RotateCcw,
   ScanLine,
   Settings2,
+  Bookmark,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { runMediaOrganizer, OrganizeSummary } from '../lib/tauri';
 import { useProgressStore } from '../store/useStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { useSavedPathsStore } from '../store/useSavedPathsStore';
 
 const DEFAULT_EXTENSIONS = [
   '.jpg',
@@ -34,15 +37,34 @@ const DEFAULT_EXTENSIONS = [
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.heic', '.webp', '.tiff', '.bmp']);
 
 export function ScanPage() {
-  const [source, setSource] = useState('D:\\Media');
-  const [destination, setDestination] = useState('E:\\SortedMedia');
-  const [moveFiles, setMoveFiles] = useState(false);
-  const [fallbackDate, setFallbackDate] = useState('2000-01-01');
-  const [useExif, setUseExif] = useState(true);
-  const [selectedExtensions, setSelectedExtensions] = useState<string[]>(DEFAULT_EXTENSIONS);
+  const settings = useSettingsStore();
+  const { paths: savedPaths } = useSavedPathsStore();
+
+  const [source, setSource] = useState('');
+  const [showSourceDropdown, setShowSourceDropdown] = useState(false);
+  const [destination, setDestination] = useState('');
+  const [showDestDropdown, setShowDestDropdown] = useState(false);
+  const [moveFiles, setMoveFiles] = useState(settings.defaultScanMode === 'move');
+  const [fallbackDate, setFallbackDate] = useState(settings.defaultFallbackDate);
+  const [useExif, setUseExif] = useState(settings.defaultUseExif);
+  const [selectedExtensions, setSelectedExtensions] = useState<string[]>(settings.defaultExtensions);
   const [summary, setSummary] = useState<OrganizeSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { isScanning, scanned, found, copied, moved, skipped, renamedDuplicates, phase } = useProgressStore();
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    if (!showSourceDropdown && !showDestDropdown) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.source-dropdown') && !target.closest('.dest-dropdown')) {
+        setShowSourceDropdown(false);
+        setShowDestDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showSourceDropdown, showDestDropdown]);
 
   const selectedCount = selectedExtensions.length;
   const actionLabel = moveFiles ? 'Move' : 'Copy';
@@ -58,6 +80,12 @@ export function ScanPage() {
     if (selected && typeof selected === 'string') {
       setter(selected);
     }
+  };
+
+  const selectSavedPath = (path: string, setter: (v: string) => void) => {
+    setter(path);
+    setShowSourceDropdown(false);
+    setShowDestDropdown(false);
   };
 
   const toggleExtension = (extension: string) => {
@@ -105,20 +133,66 @@ export function ScanPage() {
             </div>
 
             <div className="grid gap-4">
-              <FolderField
-                icon={FolderInput}
-                label="Source folder"
-                value={source}
-                onChange={setSource}
-                onBrowse={() => browse(setSource)}
-              />
-              <FolderField
-                icon={FolderOutput}
-                label="Destination folder"
-                value={destination}
-                onChange={setDestination}
-                onBrowse={() => browse(setDestination)}
-              />
+              <div className="source-dropdown relative">
+                <FolderField
+                  icon={FolderInput}
+                  label="Source folder"
+                  value={source}
+                  onChange={setSource}
+                  onBrowse={() => browse(setSource)}
+                  onSavedPathsClick={() => {
+                    setShowDestDropdown(false);
+                    setShowSourceDropdown(!showSourceDropdown);
+                  }}
+                />
+                {showSourceDropdown && savedPaths.length > 0 && (
+                  <div className="absolute top-full left-0 mt-1 w-full glass-panel rounded-xl p-1.5 z-50 shadow-2xl border-white/10 max-h-48 overflow-y-auto">
+                    {savedPaths.map((sp) => (
+                      <button
+                        key={sp.id}
+                        onClick={() => selectSavedPath(sp.path, setSource)}
+                        className="w-full text-left px-3 py-2 rounded-lg text-sm text-white hover:bg-white/10 transition-colors flex items-center gap-2"
+                      >
+                        <Bookmark size={13} className="shrink-0 text-[var(--color-text-muted)]" />
+                        <div className="min-w-0">
+                          <div className="truncate">{sp.name}</div>
+                          <div className="truncate text-[10px] text-[var(--color-text-muted)] font-mono">{sp.path}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="dest-dropdown relative">
+                <FolderField
+                  icon={FolderOutput}
+                  label="Destination folder"
+                  value={destination}
+                  onChange={setDestination}
+                  onBrowse={() => browse(setDestination)}
+                  onSavedPathsClick={() => {
+                    setShowSourceDropdown(false);
+                    setShowDestDropdown(!showDestDropdown);
+                  }}
+                />
+                {showDestDropdown && savedPaths.length > 0 && (
+                  <div className="absolute top-full left-0 mt-1 w-full glass-panel rounded-xl p-1.5 z-50 shadow-2xl border-white/10 max-h-48 overflow-y-auto">
+                    {savedPaths.map((sp) => (
+                      <button
+                        key={sp.id}
+                        onClick={() => selectSavedPath(sp.path, setDestination)}
+                        className="w-full text-left px-3 py-2 rounded-lg text-sm text-white hover:bg-white/10 transition-colors flex items-center gap-2"
+                      >
+                        <Bookmark size={13} className="shrink-0 text-[var(--color-text-muted)]" />
+                        <div className="min-w-0">
+                          <div className="truncate">{sp.name}</div>
+                          <div className="truncate text-[10px] text-[var(--color-text-muted)] font-mono">{sp.path}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -271,12 +345,14 @@ function FolderField({
   value,
   onChange,
   onBrowse,
+  onSavedPathsClick,
 }: {
   icon: typeof FolderInput;
   label: string;
   value: string;
   onChange: (value: string) => void;
   onBrowse: () => void;
+  onSavedPathsClick?: () => void;
 }) {
   return (
     <label className="block text-xs font-medium text-[var(--color-text-muted)]">
@@ -288,6 +364,16 @@ function FolderField({
           onChange={(event) => onChange(event.target.value)}
           className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-white shadow-none outline-none"
         />
+        {onSavedPathsClick && (
+          <button
+            type="button"
+            onClick={onSavedPathsClick}
+            className="rounded-lg bg-white/8 px-2 py-1.5 text-[var(--color-text-muted)] hover:text-white hover:bg-white/12"
+            title="Saved paths"
+          >
+            <Bookmark size={14} />
+          </button>
+        )}
         <button
           type="button"
           onClick={onBrowse}

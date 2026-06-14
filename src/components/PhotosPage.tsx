@@ -11,8 +11,11 @@ import {
   Play,
   ImageOff,
   Loader2,
+  Bookmark,
 } from 'lucide-react';
 import { listPhotos, PhotoEntry, isTauriRuntime } from '../lib/tauri';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { useSavedPathsStore } from '../store/useSavedPathsStore';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -287,7 +290,11 @@ function PhotoRow({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function PhotosPage() {
+  const { defaultFolder } = useSettingsStore();
+  const { paths: savedPaths } = useSavedPathsStore();
+
   const [folder, setFolder] = useState<string>('');
+  const [showPathDropdown, setShowPathDropdown] = useState(false);
   const [photos, setPhotos] = useState<LayoutPhoto[]>([]);
   const [groups, setGroups] = useState<DateGroup[]>([]);
   const [loading, setLoading] = useState(false);
@@ -295,6 +302,19 @@ export function PhotosPage() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1000);
+
+  // Close path dropdown on click outside
+  useEffect(() => {
+    if (!showPathDropdown) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.path-dropdown-area')) {
+        setShowPathDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showPathDropdown]);
 
   // Observe container width
   useEffect(() => {
@@ -359,6 +379,14 @@ export function PhotosPage() {
     }
   };
 
+  // Auto-load default folder on mount
+  useEffect(() => {
+    if (defaultFolder && !folder) {
+      setFolder(defaultFolder);
+      loadPhotos(defaultFolder);
+    }
+  }, []);
+
   const handleReload = () => {
     if (folder) loadPhotos(folder);
   };
@@ -372,13 +400,49 @@ export function PhotosPage() {
     <div className="h-full flex flex-col overflow-hidden">
       {/* ── Toolbar ── */}
       <div className="flex items-center gap-3 px-6 py-3 border-b border-white/[0.06] shrink-0">
-        <button
-          onClick={handleBrowse}
-          className="flex items-center gap-2 bg-[var(--color-primary)] hover:bg-indigo-400 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors shadow-lg shadow-[var(--color-primary)]/20"
-        >
-          <FolderOpen size={16} />
-          Choose Folder
-        </button>
+        <div className="relative path-dropdown-area">
+          <button
+            onClick={() => setShowPathDropdown(!showPathDropdown)}
+            className="flex items-center gap-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors shadow-lg shadow-[var(--color-primary)]/20"
+          >
+            <FolderOpen size={16} />
+            Choose Folder
+          </button>
+          {showPathDropdown && (
+            <div className="absolute top-full left-0 mt-1 w-72 glass-panel rounded-xl p-1.5 z-50 shadow-2xl border-white/10 max-h-64 overflow-y-auto">
+              <button
+                onClick={async () => {
+                  setShowPathDropdown(false);
+                  await handleBrowse();
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg text-sm text-white hover:bg-white/10 transition-colors"
+              >
+                Browse...
+              </button>
+              {savedPaths.length > 0 && (
+                <div className="border-t border-white/10 mt-1 pt-1">
+                  {savedPaths.map((sp) => (
+                    <button
+                      key={sp.id}
+                      onClick={() => {
+                        setShowPathDropdown(false);
+                        setFolder(sp.path);
+                        loadPhotos(sp.path);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-sm text-white hover:bg-white/10 transition-colors flex items-center gap-2"
+                    >
+                      <Bookmark size={13} className="shrink-0 text-[var(--color-text-muted)]" />
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{sp.name}</div>
+                        <div className="truncate text-[10px] text-[var(--color-text-muted)] font-mono">{sp.path}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {folder && (
           <div className="flex-1 flex items-center gap-3 min-w-0">
