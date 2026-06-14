@@ -1,5 +1,5 @@
 import { useStore } from '../store/useStore';
-import { Library, Calendar, FolderHeart, Star, Trash2, PanelLeft, ScanLine, CopyMinus } from 'lucide-react';
+import { Library, Calendar, FolderHeart, Star, Trash2, PanelLeft, ScanLine, CopyMinus, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export function Sidebar() {
@@ -11,12 +11,12 @@ export function Sidebar() {
     { id: 'albums', label: 'Albums', icon: FolderHeart },
     { id: 'favorites', label: 'Favorites', icon: Star },
     { id: 'trash', label: 'Trash', icon: Trash2 },
-  ];
+  ] as const;
 
   const tools = [
     { id: 'scan', label: 'Scan', icon: ScanLine },
     { id: 'duplicates', label: 'Delete Duplicates', icon: CopyMinus },
-  ];
+  ] as const;
 
   return (
     <motion.div 
@@ -117,6 +117,37 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      <div className="px-3 pb-3 titlebar-nodrag">
+        <button
+          onClick={() => setCurrentView('settings')}
+          className={`flex items-center gap-3 px-3 py-2 rounded-xl interactive relative group w-full ${
+            currentView === 'settings' ? 'text-white' : 'text-[var(--color-text-muted)] hover:bg-white/5 hover:text-white'
+          }`}
+        >
+          {currentView === 'settings' && (
+            <motion.div
+              layoutId="sidebar-active"
+              className="absolute inset-0 bg-white/10 rounded-xl"
+              initial={false}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+            />
+          )}
+          <Settings size={18} className="relative z-10 shrink-0" />
+          <AnimatePresence>
+            {isSidebarOpen && (
+              <motion.span
+                initial={{ opacity: 0, width: 0 }}
+                animate={{ opacity: 1, width: 'auto' }}
+                exit={{ opacity: 0, width: 0 }}
+                className="relative z-10 text-sm font-medium whitespace-nowrap overflow-hidden"
+              >
+                Settings
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </button>
+      </div>
     </motion.div>
   );
 }

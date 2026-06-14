@@ -4,7 +4,7 @@ interface StoreState {
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
   
-  currentView: 'timeline' | 'grid' | 'map' | 'albums' | 'favorites' | 'years' | 'trash' | 'scan' | 'duplicates';
+  currentView: 'timeline' | 'grid' | 'map' | 'albums' | 'favorites' | 'years' | 'trash' | 'scan' | 'duplicates' | 'settings';
   setCurrentView: (view: StoreState['currentView']) => void;
   
   searchQuery: string;
