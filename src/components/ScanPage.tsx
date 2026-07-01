@@ -25,6 +25,8 @@ const DEFAULT_EXTENSIONS = [
   '.webp',
   '.tiff',
   '.bmp',
+  '.gif',
+  '.avif',
   '.mp4',
   '.mov',
   '.mkv',
@@ -32,9 +34,10 @@ const DEFAULT_EXTENSIONS = [
   '.wmv',
   '.flv',
   '.m4v',
+  '.webm',
 ];
 
-const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.heic', '.webp', '.tiff', '.bmp']);
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.heic', '.webp', '.tiff', '.bmp', '.gif', '.avif']);
 
 export function ScanPage() {
   const settings = useSettingsStore();

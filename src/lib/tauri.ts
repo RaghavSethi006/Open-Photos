@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useProgressStore, useFaceScanStore } from '../store/useStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 export interface ScanProgress {
   scanned: number;
@@ -24,6 +25,7 @@ export interface OrganizeOptions {
   fallbackDate: string;
   allowedExtensions: string[];
   useExif: boolean;
+  skipHiddenFiles?: boolean;
 }
 
 export interface OrganizeSummary {
@@ -38,7 +40,12 @@ export interface OrganizeSummary {
 }
 
 export async function runMediaOrganizer(options: OrganizeOptions): Promise<OrganizeSummary> {
-  return invoke('run_media_organizer', { options });
+  return invoke('run_media_organizer', {
+    options: {
+      ...options,
+      skipHiddenFiles: options.skipHiddenFiles ?? useSettingsStore.getState().skipHiddenFiles,
+    },
+  });
 }
 
 export async function setupTauriListeners() {
@@ -103,6 +110,7 @@ export function isTauriRuntime() {
 export interface DuplicateScanOptions {
   source: string;
   allowedExtensions: string[];
+  skipHiddenFiles?: boolean;
 }
 
 export interface DuplicateFile {
@@ -148,7 +156,12 @@ export interface DuplicateResolveSummary {
 }
 
 export async function scanDuplicates(options: DuplicateScanOptions): Promise<DuplicateSet[]> {
-  return invoke('scan_duplicates', { options });
+  return invoke('scan_duplicates', {
+    options: {
+      ...options,
+      skipHiddenFiles: options.skipHiddenFiles ?? useSettingsStore.getState().skipHiddenFiles,
+    },
+  });
 }
 
 export async function resolveDuplicates(options: DuplicateResolveOptions): Promise<DuplicateResolveSummary> {
@@ -236,8 +249,8 @@ export interface PhotoEntry {
   isFolder?: boolean;
 }
 
-export async function listPhotos(folder: string): Promise<PhotoEntry[]> {
-  return invoke('list_photos', { folder });
+export async function listPhotos(folder: string, skipHiddenFiles = useSettingsStore.getState().skipHiddenFiles): Promise<PhotoEntry[]> {
+  return invoke('list_photos', { folder, skipHiddenFiles });
 }
 
 // ─── Photo Metadata ──────────────────────────────────────────────────────────

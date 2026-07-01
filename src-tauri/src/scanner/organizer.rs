@@ -23,6 +23,8 @@ pub struct OrganizeOptions {
     pub fallback_date: String,
     pub allowed_extensions: Vec<String>,
     pub use_exif: bool,
+    #[serde(default = "default_skip_hidden_files")]
+    pub skip_hidden_files: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -107,6 +109,11 @@ pub fn organize_media(
 
         summary.scanned += 1;
         let path = entry.path();
+
+        if options.skip_hidden_files && is_hidden_path(path, &source) {
+            summary.skipped += 1;
+            continue;
+        }
 
         if destination_inside_source && is_inside_destination(path, &destination_canonical) {
             summary.skipped += 1;
@@ -208,6 +215,23 @@ fn move_or_copy_file(source: &Path, destination: &Path, move_file: bool) -> Resu
             fs::remove_file(source).map_err(|e| e.to_string())
         }
     }
+}
+
+fn default_skip_hidden_files() -> bool {
+    true
+}
+
+fn is_hidden_path(path: &Path, root: &Path) -> bool {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .components()
+        .any(|component| {
+            component
+                .as_os_str()
+                .to_str()
+                .map(|part| part.starts_with('.') && part.len() > 1)
+                .unwrap_or(false)
+        })
 }
 
 fn best_media_date(path: &Path, fallback_date: DateTime<Local>, use_exif: bool) -> DateTime<Local> {
@@ -393,5 +417,13 @@ mod tests {
         assert_eq!(fs::read(&destination).unwrap(), b"photo");
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn hidden_paths_are_detected_relative_to_scan_root() {
+        let root = PathBuf::from("library");
+        assert!(is_hidden_path(&root.join(".private").join("photo.jpg"), &root));
+        assert!(is_hidden_path(&root.join(".photo.jpg"), &root));
+        assert!(!is_hidden_path(&root.join("visible").join("photo.jpg"), &root));
     }
 }

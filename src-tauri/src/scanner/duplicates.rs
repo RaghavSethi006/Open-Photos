@@ -17,6 +17,8 @@ const DEFAULT_EXTENSIONS: &[&str] = &[
 pub struct DuplicateScanOptions {
     pub source: String,
     pub allowed_extensions: Vec<String>,
+    #[serde(default = "default_skip_hidden_files")]
+    pub skip_hidden_files: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -89,6 +91,23 @@ fn get_file_hash_sha256(path: &Path) -> Result<String, std::io::Error> {
     Ok(hash.iter().map(|b| format!("{:02x}", b)).collect())
 }
 
+fn default_skip_hidden_files() -> bool {
+    true
+}
+
+fn is_hidden_path(path: &Path, root: &Path) -> bool {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .components()
+        .any(|component| {
+            component
+                .as_os_str()
+                .to_str()
+                .map(|part| part.starts_with('.') && part.len() > 1)
+                .unwrap_or(false)
+        })
+}
+
 fn duplicate_file_from_path(path: &Path) -> Result<DuplicateFile, String> {
     let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
     let modified = metadata.modified()
@@ -107,6 +126,7 @@ fn duplicate_file_from_path(path: &Path) -> Result<DuplicateFile, String> {
 fn collect_hash_candidates(
     source: &Path,
     allowed_exts: &std::collections::HashSet<String>,
+    skip_hidden_files: bool,
 ) -> Result<Vec<PathBuf>, String> {
     let mut by_size: HashMap<u64, Vec<PathBuf>> = HashMap::new();
 
@@ -121,6 +141,10 @@ fn collect_hash_candidates(
         }
 
         let path = entry.path();
+        if skip_hidden_files && is_hidden_path(path, source) {
+            continue;
+        }
+
         let ext = path.extension()
             .and_then(|e| e.to_str())
             .map(|e| format!(".{}", e.to_lowercase()))
@@ -167,7 +191,7 @@ pub fn scan_duplicates(
     let mut scanned_count = 0;
     let mut duplicates_count = 0;
 
-    let candidates = collect_hash_candidates(&source, &allowed_exts)?;
+    let candidates = collect_hash_candidates(&source, &allowed_exts, options.skip_hidden_files)?;
 
     for path in candidates {
         scanned_count += 1;
@@ -384,10 +408,29 @@ mod tests {
             .iter()
             .map(|s| s.to_string())
             .collect::<std::collections::HashSet<_>>();
-        let candidates = collect_hash_candidates(&dir, &allowed).unwrap();
+        let candidates = collect_hash_candidates(&dir, &allowed, true).unwrap();
 
         assert_eq!(candidates.len(), 2);
         assert!(candidates.iter().all(|p| p.file_name().unwrap() != "unique.jpg"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn hash_candidates_skip_hidden_paths_when_enabled() {
+        let dir = unique_temp_dir("hidden");
+        let hidden_dir = dir.join(".hidden");
+        fs::create_dir_all(&hidden_dir).unwrap();
+        fs::write(hidden_dir.join("dup_a.jpg"), b"same").unwrap();
+        fs::write(hidden_dir.join("dup_b.jpg"), b"same").unwrap();
+
+        let allowed = DEFAULT_EXTENSIONS
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<std::collections::HashSet<_>>();
+        let candidates = collect_hash_candidates(&dir, &allowed, true).unwrap();
+
+        assert!(candidates.is_empty());
 
         let _ = fs::remove_dir_all(dir);
     }

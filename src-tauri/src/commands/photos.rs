@@ -23,8 +23,9 @@ pub struct PhotoEntry {
 }
 
 #[command]
-pub fn list_photos(folder: String) -> Result<Vec<PhotoEntry>, String> {
+pub fn list_photos(folder: String, skip_hidden_files: Option<bool>) -> Result<Vec<PhotoEntry>, String> {
     let root = PathBuf::from(folder.trim());
+    let skip_hidden_files = skip_hidden_files.unwrap_or(true);
 
     if !root.is_dir() {
         return Err(format!(
@@ -44,8 +45,7 @@ pub fn list_photos(folder: String) -> Result<Vec<PhotoEntry>, String> {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            // Skip hidden folders
-            if name.starts_with('.') {
+            if skip_hidden_files && is_hidden_path(&path, &root) {
                 continue;
             }
             entries.push(PhotoEntry {
@@ -70,6 +70,10 @@ pub fn list_photos(folder: String) -> Result<Vec<PhotoEntry>, String> {
         }
 
         let path = entry.path();
+        if skip_hidden_files && is_hidden_path(path, &root) {
+            continue;
+        }
+
         let ext = path
             .extension()
             .and_then(|e| e.to_str())
@@ -120,4 +124,30 @@ pub fn list_photos(folder: String) -> Result<Vec<PhotoEntry>, String> {
     });
 
     Ok(entries)
+}
+
+fn is_hidden_path(path: &std::path::Path, root: &std::path::Path) -> bool {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .components()
+        .any(|component| {
+            component
+                .as_os_str()
+                .to_str()
+                .map(|part| part.starts_with('.') && part.len() > 1)
+                .unwrap_or(false)
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hidden_paths_are_detected_relative_to_photo_root() {
+        let root = PathBuf::from("library");
+        assert!(is_hidden_path(&root.join(".private").join("photo.jpg"), &root));
+        assert!(is_hidden_path(&root.join(".photo.jpg"), &root));
+        assert!(!is_hidden_path(&root.join("visible").join("photo.jpg"), &root));
+    }
 }
