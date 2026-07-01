@@ -26,7 +26,7 @@ import { useSavedPathsStore } from '../store/useSavedPathsStore';
 
 const DEFAULT_EXTENSIONS = [
   '.jpg', '.jpeg', '.png', '.heic', '.webp', '.tiff', '.bmp',
-  '.mp4', '.mov', '.mkv', '.avi', '.wmv', '.flv', '.m4v',
+  '.gif', '.avif', '.mp4', '.mov', '.mkv', '.avi', '.wmv', '.flv', '.m4v', '.webm',
 ];
 
 export function DuplicatesPage() {

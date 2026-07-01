@@ -16,7 +16,7 @@ export type AccentColor = typeof ACCENT_COLORS[number]['id'];
 
 const DEFAULT_EXTENSIONS = [
   '.jpg', '.jpeg', '.png', '.heic', '.webp', '.tiff', '.bmp',
-  '.mp4', '.mov', '.mkv', '.avi', '.wmv', '.flv', '.m4v',
+  '.gif', '.avif', '.mp4', '.mov', '.mkv', '.avi', '.wmv', '.flv', '.m4v', '.webm',
 ];
 
 interface SettingsState {

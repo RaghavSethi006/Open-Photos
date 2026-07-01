@@ -11,7 +11,7 @@ use walkdir::WalkDir;
 
 const DEFAULT_EXTENSIONS: &[&str] = &[
     ".jpg", ".jpeg", ".png", ".heic", ".webp", ".tiff", ".bmp", ".mp4", ".mov", ".mkv", ".avi",
-    ".wmv", ".flv", ".m4v",
+    ".wmv", ".flv", ".m4v", ".gif", ".avif", ".webm",
 ];
 
 #[derive(Debug, Clone, Deserialize)]
@@ -73,6 +73,7 @@ pub fn organize_media(
 
     let source_canonical = source.canonicalize().map_err(|e| e.to_string())?;
     let destination_canonical = destination.canonicalize().map_err(|e| e.to_string())?;
+    let destination_inside_source = destination_canonical.starts_with(&source_canonical);
     let fallback_date = parse_fallback_date(&options.fallback_date)?;
     let allowed_extensions = normalize_extensions(&options.allowed_extensions);
     let start = Instant::now();
@@ -107,7 +108,7 @@ pub fn organize_media(
         summary.scanned += 1;
         let path = entry.path();
 
-        if path.starts_with(&destination_canonical) {
+        if destination_inside_source && is_inside_destination(path, &destination_canonical) {
             summary.skipped += 1;
             continue;
         }
@@ -156,7 +157,6 @@ pub fn organize_media(
     emit_progress(&app_handle, &summary, "", start, "Done");
     let _ = app_handle.emit("scan:complete", progress_from_summary(&summary, "", start, "Done"));
 
-    let _ = source_canonical;
     Ok(summary)
 }
 
@@ -181,12 +181,33 @@ fn organize_one_file(
     let (target_file, renamed_duplicate) = unique_target_path(&target_folder, filename)?;
 
     if move_file {
-        fs::rename(path, target_file).map_err(|e| e.to_string())?;
+        move_or_copy_file(path, &target_file, true)?;
     } else {
-        fs::copy(path, target_file).map_err(|e| e.to_string())?;
+        move_or_copy_file(path, &target_file, false)?;
     }
 
     Ok(renamed_duplicate)
+}
+
+fn is_inside_destination(path: &Path, destination_canonical: &Path) -> bool {
+    path.canonicalize()
+        .map(|canonical| canonical.starts_with(destination_canonical))
+        .unwrap_or(false)
+}
+
+fn move_or_copy_file(source: &Path, destination: &Path, move_file: bool) -> Result<(), String> {
+    if !move_file {
+        fs::copy(source, destination).map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    match fs::rename(source, destination) {
+        Ok(_) => Ok(()),
+        Err(_) => {
+            fs::copy(source, destination).map_err(|e| e.to_string())?;
+            fs::remove_file(source).map_err(|e| e.to_string())
+        }
+    }
 }
 
 fn best_media_date(path: &Path, fallback_date: DateTime<Local>, use_exif: bool) -> DateTime<Local> {
@@ -315,5 +336,62 @@ fn progress_from_summary(
         moved: summary.moved,
         skipped: summary.skipped,
         renamed_duplicates: summary.renamed_duplicates,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let mut dir = std::env::temp_dir();
+        dir.push(format!(
+            "lgp_organizer_test_{}_{}",
+            name,
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn default_extensions_include_gallery_media_types() {
+        assert!(DEFAULT_EXTENSIONS.contains(&".gif"));
+        assert!(DEFAULT_EXTENSIONS.contains(&".avif"));
+        assert!(DEFAULT_EXTENSIONS.contains(&".webm"));
+    }
+
+    #[test]
+    fn destination_child_is_detected_after_canonicalization() {
+        let root = unique_temp_dir("dest_child");
+        let destination = root.join("library");
+        let nested = destination.join("2026").join("photo.jpg");
+        fs::create_dir_all(nested.parent().unwrap()).unwrap();
+        fs::write(&nested, b"photo").unwrap();
+
+        let destination_canonical = destination.canonicalize().unwrap();
+
+        assert!(is_inside_destination(&nested, &destination_canonical));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn move_file_removes_source_and_creates_destination() {
+        let root = unique_temp_dir("move_file");
+        let source = root.join("source.jpg");
+        let destination = root.join("dest.jpg");
+        fs::write(&source, b"photo").unwrap();
+
+        move_or_copy_file(&source, &destination, true).unwrap();
+
+        assert!(!source.exists());
+        assert_eq!(fs::read(&destination).unwrap(), b"photo");
+
+        let _ = fs::remove_dir_all(root);
     }
 }
