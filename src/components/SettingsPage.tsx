@@ -414,19 +414,6 @@ export function SettingsPage() {
               </div>
             </div>
 
-            <label className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 cursor-pointer">
-              <div>
-                <span className="text-sm font-medium text-white">Auto-scan faces</span>
-                <p className="text-[10px] text-[var(--color-text-muted)]/60 mt-0.5">
-                  Automatically scan for faces when photos are loaded.
-                </p>
-              </div>
-              <input
-                type="checkbox"
-                className="h-5 w-5 accent-[var(--color-primary)]"
-              />
-            </label>
-
             <label className="block text-xs font-medium text-[var(--color-text-muted)]">
               Similarity threshold
               <p className="text-[10px] text-[var(--color-text-muted)]/60 mt-0.5 mb-2">

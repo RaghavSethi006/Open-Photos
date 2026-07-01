@@ -36,4 +36,5 @@ uuid = { version = "1", features = ["v4"] }
 dirs-next = "2"
 face_id = { version = "0.4", default-features = false, features = ["serde", "clustering"] }
 image = "0.25"
-reqwest = { version = "0.12", features = ["blocking"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+base64 = "0.22"

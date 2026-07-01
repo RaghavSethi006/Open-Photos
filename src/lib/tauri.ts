@@ -298,6 +298,7 @@ export interface PersonInfo {
   name: string;
   faceCount: number;
   thumbnailPath: string;
+  thumbnailDataUrl?: string | null;
 }
 
 export interface PhotoFaceInfo {

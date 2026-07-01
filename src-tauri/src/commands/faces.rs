@@ -1,7 +1,45 @@
 use crate::ai::analyzer::{get_analyzer_manager, ModelSize};
 use crate::ai::clustering::FaceEmbedding;
 use crate::ai::index::{self, FaceRecord};
+use base64::Engine;
 use tauri::{command, AppHandle, Emitter};
+
+fn crop_face_to_data_url(photo_path: &str, bbox: &[f32; 4]) -> Result<String, String> {
+    let img = image::open(photo_path).map_err(|e| format!("Failed to open image: {}", e))?;
+    let (w, h) = (img.width() as f32, img.height() as f32);
+
+    let mut x1 = (bbox[0] * w).max(0.0);
+    let mut y1 = (bbox[1] * h).max(0.0);
+    let mut x2 = (bbox[2] * w).min(w - 1.0);
+    let mut y2 = (bbox[3] * h).min(h - 1.0);
+
+    let margin_x = (x2 - x1) * 0.3;
+    let margin_y = (y2 - y1) * 0.3;
+    x1 = (x1 - margin_x).max(0.0);
+    y1 = (y1 - margin_y).max(0.0);
+    x2 = (x2 + margin_x).min(w - 1.0);
+    y2 = (y2 + margin_y).min(h - 1.0);
+
+    let crop_x = x1 as u32;
+    let crop_y = y1 as u32;
+    let crop_w = (x2 - x1) as u32;
+    let crop_h = (y2 - y1) as u32;
+
+    if crop_w == 0 || crop_h == 0 {
+        return Err("Face bounding box has zero area.".to_string());
+    }
+
+    let face = img.crop_imm(crop_x, crop_y, crop_w, crop_h);
+    let face = face.resize_exact(120, 120, image::imageops::FilterType::CatmullRom);
+
+    let mut buf = std::io::Cursor::new(Vec::new());
+    face.write_to(&mut buf, image::ImageFormat::Jpeg)
+        .map_err(|e| format!("Failed to encode thumbnail: {}", e))?;
+
+    let bytes = buf.into_inner();
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(format!("data:image/jpeg;base64,{}", b64))
+}
 
 fn is_image_ext(path: &str) -> bool {
     let lower = path.to_lowercase();
@@ -172,11 +210,19 @@ pub fn list_people() -> Result<Vec<serde_json::Value>, String> {
         .people
         .iter()
         .map(|p| {
+            let thumbnail_data_url = idx
+                .faces
+                .iter()
+                .filter(|f| f.person_id.as_deref() == Some(&p.id) && !f.rejected)
+                .max_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap_or(std::cmp::Ordering::Equal))
+                .and_then(|best| crop_face_to_data_url(&best.photo_path, &best.bbox).ok());
+
             serde_json::json!({
                 "id": p.id,
                 "name": p.name,
                 "faceCount": p.face_count,
                 "thumbnailPath": p.thumbnail_path,
+                "thumbnailDataUrl": thumbnail_data_url,
             })
         })
         .collect();
@@ -186,6 +232,7 @@ pub fn list_people() -> Result<Vec<serde_json::Value>, String> {
         "name": "Unnamed",
         "faceCount": unassigned_count,
         "thumbnailPath": "",
+        "thumbnailDataUrl": null,
     }));
 
     Ok(people)
