@@ -1,9 +1,7 @@
 use crate::scanner::trash::{
-    move_to_trash as move_to_trash_impl,
-    cleanup_trash as cleanup_trash_impl,
-    list_trash as list_trash_impl,
-    restore_from_trash as restore_from_trash_impl,
-    TrashEntry, TrashCleanupSummary,
+    cleanup_trash as cleanup_trash_impl, list_trash as list_trash_impl,
+    move_to_trash as move_to_trash_impl, restore_from_trash as restore_from_trash_impl,
+    TrashCleanupSummary, TrashEntry,
 };
 use tauri::command;
 
@@ -24,9 +22,7 @@ pub fn cleanup_trash_folder(
 }
 
 #[command]
-pub fn list_trash_folder(
-    trash_folder: String,
-) -> Result<Vec<TrashEntry>, String> {
+pub fn list_trash_folder(trash_folder: String) -> Result<Vec<TrashEntry>, String> {
     list_trash_impl(trash_folder)
 }
 

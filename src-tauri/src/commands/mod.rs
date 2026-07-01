@@ -1,8 +1,8 @@
-pub mod scan;
-pub mod duplicates;
-pub mod photos;
-pub mod trash;
 pub mod albums;
+pub mod duplicates;
+pub mod faces;
 pub mod favorites;
 pub mod metadata;
-pub mod faces;
+pub mod photos;
+pub mod scan;
+pub mod trash;

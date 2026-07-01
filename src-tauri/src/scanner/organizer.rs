@@ -162,7 +162,10 @@ pub fn organize_media(
 
     summary.elapsed_ms = start.elapsed().as_millis() as u64;
     emit_progress(&app_handle, &summary, "", start, "Done");
-    let _ = app_handle.emit("scan:complete", progress_from_summary(&summary, "", start, "Done"));
+    let _ = app_handle.emit(
+        "scan:complete",
+        progress_from_summary(&summary, "", start, "Done"),
+    );
 
     Ok(summary)
 }
@@ -257,7 +260,10 @@ fn best_media_date(path: &Path, fallback_date: DateTime<Local>, use_exif: bool) 
     dates.into_iter().min().unwrap_or(fallback_date)
 }
 
-fn unique_target_path(folder: &Path, filename: &std::ffi::OsStr) -> Result<(PathBuf, bool), String> {
+fn unique_target_path(
+    folder: &Path,
+    filename: &std::ffi::OsStr,
+) -> Result<(PathBuf, bool), String> {
     let original = folder.join(filename);
     if !original.exists() {
         return Ok((original, false));
@@ -294,7 +300,10 @@ fn is_allowed_media(path: &Path, allowed_extensions: &HashSet<String>) -> bool {
 
 fn normalize_extensions(extensions: &[String]) -> HashSet<String> {
     let source = if extensions.is_empty() {
-        DEFAULT_EXTENSIONS.iter().map(|ext| ext.to_string()).collect()
+        DEFAULT_EXTENSIONS
+            .iter()
+            .map(|ext| ext.to_string())
+            .collect()
     } else {
         extensions.to_vec()
     };
@@ -422,8 +431,14 @@ mod tests {
     #[test]
     fn hidden_paths_are_detected_relative_to_scan_root() {
         let root = PathBuf::from("library");
-        assert!(is_hidden_path(&root.join(".private").join("photo.jpg"), &root));
+        assert!(is_hidden_path(
+            &root.join(".private").join("photo.jpg"),
+            &root
+        ));
         assert!(is_hidden_path(&root.join(".photo.jpg"), &root));
-        assert!(!is_hidden_path(&root.join("visible").join("photo.jpg"), &root));
+        assert!(!is_hidden_path(
+            &root.join("visible").join("photo.jpg"),
+            &root
+        ));
     }
 }

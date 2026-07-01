@@ -91,7 +91,8 @@ pub async fn scan_faces(
     };
 
     let mgr = get_analyzer_manager();
-    mgr.ensure_initialized(Some(&app_handle), model_size).await?;
+    mgr.ensure_initialized(Some(&app_handle), model_size)
+        .await?;
 
     let analyzer_guard = mgr.get_analyzer()?;
     let analyzer = analyzer_guard
@@ -103,7 +104,11 @@ pub async fn scan_faces(
     let mut faces_found = 0;
     let mut face_index = index::read_index()?;
     let mut index_changed = false;
-    let model_type = if use_large_model { "buffalo_l" } else { "buffalo_s" };
+    let model_type = if use_large_model {
+        "buffalo_l"
+    } else {
+        "buffalo_s"
+    };
 
     for (idx, path) in paths.iter().enumerate() {
         if !is_image_ext(path) {
@@ -229,7 +234,11 @@ pub fn list_people() -> Result<Vec<serde_json::Value>, String> {
                 .faces
                 .iter()
                 .filter(|f| f.person_id.as_deref() == Some(&p.id) && !f.rejected)
-                .max_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap_or(std::cmp::Ordering::Equal))
+                .max_by(|a, b| {
+                    a.confidence
+                        .partial_cmp(&b.confidence)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
                 .and_then(|best| crop_face_to_data_url(&best.photo_path, &best.bbox).ok());
 
             serde_json::json!({

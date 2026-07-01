@@ -1,11 +1,11 @@
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime};
-use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
-use walkdir::WalkDir;
 use tauri::{AppHandle, Emitter};
+use walkdir::WalkDir;
 
 const DEFAULT_EXTENSIONS: &[&str] = &[
     ".jpg", ".jpeg", ".png", ".heic", ".webp", ".tiff", ".bmp", ".mp4", ".mov", ".mkv", ".avi",
@@ -110,14 +110,22 @@ fn is_hidden_path(path: &Path, root: &Path) -> bool {
 
 fn duplicate_file_from_path(path: &Path) -> Result<DuplicateFile, String> {
     let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
-    let modified = metadata.modified()
-        .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))
+    let modified = metadata
+        .modified()
+        .and_then(|t| {
+            t.duration_since(SystemTime::UNIX_EPOCH)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
 
     Ok(DuplicateFile {
         path: path.to_string_lossy().into_owned(),
-        name: path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string(),
+        name: path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string(),
         size: metadata.len(),
         modified,
     })
@@ -145,7 +153,8 @@ fn collect_hash_candidates(
             continue;
         }
 
-        let ext = path.extension()
+        let ext = path
+            .extension()
             .and_then(|e| e.to_str())
             .map(|e| format!(".{}", e.to_lowercase()))
             .unwrap_or_default();
@@ -178,12 +187,23 @@ pub fn scan_duplicates(
     }
 
     let allowed_exts = if options.allowed_extensions.is_empty() {
-        DEFAULT_EXTENSIONS.iter().map(|s| s.to_string()).collect::<std::collections::HashSet<_>>()
+        DEFAULT_EXTENSIONS
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<std::collections::HashSet<_>>()
     } else {
-        options.allowed_extensions.iter().map(|ext| {
-            let lower = ext.trim().to_lowercase();
-            if lower.starts_with('.') { lower } else { format!(".{}", lower) }
-        }).collect::<std::collections::HashSet<_>>()
+        options
+            .allowed_extensions
+            .iter()
+            .map(|ext| {
+                let lower = ext.trim().to_lowercase();
+                if lower.starts_with('.') {
+                    lower
+                } else {
+                    format!(".{}", lower)
+                }
+            })
+            .collect::<std::collections::HashSet<_>>()
     };
 
     let start = Instant::now();
@@ -198,13 +218,16 @@ pub fn scan_duplicates(
 
         if scanned_count % 50 == 0 {
             let current_file = path.to_string_lossy().into_owned();
-            let _ = app_handle.emit("duplicate:progress", DuplicateScanProgress {
-                scanned: scanned_count,
-                duplicates_found: duplicates_count,
-                current_file,
-                elapsed_ms: start.elapsed().as_millis() as u64,
-                phase: "Scanning & Hashing".to_string(),
-            });
+            let _ = app_handle.emit(
+                "duplicate:progress",
+                DuplicateScanProgress {
+                    scanned: scanned_count,
+                    duplicates_found: duplicates_count,
+                    current_file,
+                    elapsed_ms: start.elapsed().as_millis() as u64,
+                    phase: "Scanning & Hashing".to_string(),
+                },
+            );
         }
 
         let hash = match get_file_hash_sha256(&path) {
@@ -226,7 +249,8 @@ pub fn scan_duplicates(
     }
 
     // Filter only groups containing duplicate files
-    let result: Vec<DuplicateSet> = hash_map.into_iter()
+    let result: Vec<DuplicateSet> = hash_map
+        .into_iter()
         .filter(|(_, (_, dups))| !dups.is_empty())
         .map(|(hash, (original, duplicates))| DuplicateSet {
             hash,
@@ -235,13 +259,16 @@ pub fn scan_duplicates(
         })
         .collect();
 
-    let _ = app_handle.emit("duplicate:complete", DuplicateScanProgress {
-        scanned: scanned_count,
-        duplicates_found: duplicates_count,
-        current_file: "".to_string(),
-        elapsed_ms: start.elapsed().as_millis() as u64,
-        phase: "Done".to_string(),
-    });
+    let _ = app_handle.emit(
+        "duplicate:complete",
+        DuplicateScanProgress {
+            scanned: scanned_count,
+            duplicates_found: duplicates_count,
+            current_file: "".to_string(),
+            elapsed_ms: start.elapsed().as_millis() as u64,
+            phase: "Done".to_string(),
+        },
+    );
 
     Ok(result)
 }
@@ -277,10 +304,7 @@ fn move_file_with_fallback(path: &Path, dest_path: &Path) -> Result<(), String> 
                 fs::remove_file(path).map_err(|e| e.to_string())?;
                 Ok(())
             }
-            Err(copy_err) => Err(format!(
-                "{} (Copy error: {})",
-                rename_err, copy_err
-            )),
+            Err(copy_err) => Err(format!("{} (Copy error: {})", rename_err, copy_err)),
         },
     }
 }
@@ -328,7 +352,9 @@ pub fn resolve_duplicates(
     };
 
     if !options.delete_duplicates && options.move_duplicates_to.is_none() {
-        return Err("Must specify either delete_duplicates as true or move_duplicates_to path.".into());
+        return Err(
+            "Must specify either delete_duplicates as true or move_duplicates_to path.".into(),
+        );
     }
 
     if let Some(ref move_dir_str) = options.move_duplicates_to {
@@ -345,7 +371,9 @@ pub fn resolve_duplicates(
 
         let path = PathBuf::from(&item.path);
         if !path.exists() {
-            summary.errors.push(format!("File does not exist: {}", item.path));
+            summary
+                .errors
+                .push(format!("File does not exist: {}", item.path));
             continue;
         }
 
@@ -360,7 +388,9 @@ pub fn resolve_duplicates(
             move_dir.as_deref(),
             &mut summary,
         ) {
-            summary.errors.push(format!("Failed to resolve {}: {}", item.path, e));
+            summary
+                .errors
+                .push(format!("Failed to resolve {}: {}", item.path, e));
         }
     }
 
@@ -411,7 +441,9 @@ mod tests {
         let candidates = collect_hash_candidates(&dir, &allowed, true).unwrap();
 
         assert_eq!(candidates.len(), 2);
-        assert!(candidates.iter().all(|p| p.file_name().unwrap() != "unique.jpg"));
+        assert!(candidates
+            .iter()
+            .all(|p| p.file_name().unwrap() != "unique.jpg"));
 
         let _ = fs::remove_dir_all(dir);
     }

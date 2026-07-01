@@ -280,11 +280,7 @@ pub fn list_trash(trash_folder: String) -> Result<Vec<TrashEntry>, String> {
         entries.push(TrashEntry {
             path: path.to_string_lossy().into_owned(),
             name: file_name.clone(),
-            original_path: manifest
-                .files
-                .get(&file_name)
-                .cloned()
-                .unwrap_or_default(),
+            original_path: manifest.files.get(&file_name).cloned().unwrap_or_default(),
             moved_at: modified,
             size: metadata.len(),
         });
@@ -293,10 +289,7 @@ pub fn list_trash(trash_folder: String) -> Result<Vec<TrashEntry>, String> {
     Ok(entries)
 }
 
-pub fn restore_from_trash(
-    paths: Vec<String>,
-    trash_folder: String,
-) -> Result<Vec<String>, String> {
+pub fn restore_from_trash(paths: Vec<String>, trash_folder: String) -> Result<Vec<String>, String> {
     let trash = PathBuf::from(trash_folder.trim());
     let mut manifest = read_manifest(&trash);
     let mut restored = Vec::new();

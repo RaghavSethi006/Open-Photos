@@ -1,6 +1,6 @@
 use serde::Serialize;
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 use tauri::command;
 use walkdir::WalkDir;
 
@@ -23,7 +23,10 @@ pub struct PhotoEntry {
 }
 
 #[command]
-pub fn list_photos(folder: String, skip_hidden_files: Option<bool>) -> Result<Vec<PhotoEntry>, String> {
+pub fn list_photos(
+    folder: String,
+    skip_hidden_files: Option<bool>,
+) -> Result<Vec<PhotoEntry>, String> {
     let root = PathBuf::from(folder.trim());
     let skip_hidden_files = skip_hidden_files.unwrap_or(true);
 
@@ -115,7 +118,11 @@ pub fn list_photos(folder: String, skip_hidden_files: Option<bool>) -> Result<Ve
     // Sort: folders first (by name), then files (newest first)
     entries.sort_by(|a, b| {
         if a.is_folder != b.is_folder {
-            return if a.is_folder { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater };
+            return if a.is_folder {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
         }
         if a.is_folder {
             return a.name.to_lowercase().cmp(&b.name.to_lowercase());
@@ -146,8 +153,14 @@ mod tests {
     #[test]
     fn hidden_paths_are_detected_relative_to_photo_root() {
         let root = PathBuf::from("library");
-        assert!(is_hidden_path(&root.join(".private").join("photo.jpg"), &root));
+        assert!(is_hidden_path(
+            &root.join(".private").join("photo.jpg"),
+            &root
+        ));
         assert!(is_hidden_path(&root.join(".photo.jpg"), &root));
-        assert!(!is_hidden_path(&root.join("visible").join("photo.jpg"), &root));
+        assert!(!is_hidden_path(
+            &root.join("visible").join("photo.jpg"),
+            &root
+        ));
     }
 }

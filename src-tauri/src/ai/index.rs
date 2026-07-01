@@ -155,9 +155,12 @@ pub fn auto_cluster_index(index: &mut FaceIndex) {
         .enumerate()
         .filter(|(_, f)| f.person_id.is_none() && !f.rejected)
         .map(|(i, f)| {
-            (i, FaceInfo {
-                embedding: f.embedding.clone(),
-            })
+            (
+                i,
+                FaceInfo {
+                    embedding: f.embedding.clone(),
+                },
+            )
         })
         .collect();
 
@@ -459,13 +462,9 @@ mod tests {
             0.6,
         );
 
-        let assigned = assign_person_to_index(
-            &mut index,
-            &[faces[0].id.clone()],
-            Some("alex-2"),
-            "Alex",
-        )
-        .unwrap();
+        let assigned =
+            assign_person_to_index(&mut index, &[faces[0].id.clone()], Some("alex-2"), "Alex")
+                .unwrap();
 
         assert_eq!(assigned.id, "alex-2");
         assert_eq!(index.faces[0].person_id.as_deref(), Some("alex-2"));

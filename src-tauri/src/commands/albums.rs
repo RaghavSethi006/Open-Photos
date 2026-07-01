@@ -1,12 +1,8 @@
 use crate::scanner::albums::{
-    create_album as create_album_impl,
-    list_albums as list_albums_impl,
-    get_album as get_album_impl,
-    delete_album as delete_album_impl,
-    rename_album as rename_album_impl,
-    add_photos_to_album as add_photos_impl,
-    remove_photos_from_album as remove_photos_impl,
-    Album,
+    add_photos_to_album as add_photos_impl, create_album as create_album_impl,
+    delete_album as delete_album_impl, get_album as get_album_impl,
+    list_albums as list_albums_impl, remove_photos_from_album as remove_photos_impl,
+    rename_album as rename_album_impl, Album,
 };
 use tauri::command;
 

@@ -22,10 +22,7 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     dot / (norm_a * norm_b)
 }
 
-pub fn cluster_embeddings(
-    embeddings: &[FaceEmbedding],
-    threshold: f32,
-) -> Vec<Vec<usize>> {
+pub fn cluster_embeddings(embeddings: &[FaceEmbedding], threshold: f32) -> Vec<Vec<usize>> {
     let n = embeddings.len();
     if n == 0 {
         return vec![];
@@ -89,7 +86,12 @@ pub fn find_best_thumbnail(embeddings: &[FaceEmbedding]) -> Option<FaceEmbedding
     if embeddings.is_empty() {
         return None;
     }
-    embeddings.iter().max_by(|a, b| {
-        a.confidence.partial_cmp(&b.confidence).unwrap_or(Ordering::Equal)
-    }).cloned()
+    embeddings
+        .iter()
+        .max_by(|a, b| {
+            a.confidence
+                .partial_cmp(&b.confidence)
+                .unwrap_or(Ordering::Equal)
+        })
+        .cloned()
 }

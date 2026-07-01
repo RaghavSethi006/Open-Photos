@@ -1,8 +1,6 @@
 use crate::scanner::duplicates::{
-    scan_duplicates as scan_duplicates_impl,
-    resolve_duplicates as resolve_duplicates_impl,
-    DuplicateScanOptions, DuplicateSet,
-    DuplicateResolveOptions, DuplicateResolveSummary,
+    resolve_duplicates as resolve_duplicates_impl, scan_duplicates as scan_duplicates_impl,
+    DuplicateResolveOptions, DuplicateResolveSummary, DuplicateScanOptions, DuplicateSet,
 };
 use tauri::{command, AppHandle};
 

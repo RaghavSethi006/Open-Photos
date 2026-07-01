@@ -1,7 +1,7 @@
-use std::path::Path;
-use std::fs::File;
 use chrono::NaiveDateTime;
 use serde::Serialize;
+use std::fs::File;
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,7 +34,11 @@ fn get_first_rational(value: &exif::Value) -> Option<(i64, i64)> {
 
 fn parse_rational(value: &exif::Value) -> Option<f64> {
     let (num, den) = get_first_rational(value)?;
-    if den == 0 { None } else { Some(num as f64 / den as f64) }
+    if den == 0 {
+        None
+    } else {
+        Some(num as f64 / den as f64)
+    }
 }
 
 fn format_rational(value: &exif::Value) -> Option<String> {
@@ -81,10 +85,10 @@ pub fn extract_exif(path: &Path) -> ExifData {
         Ok(f) => f,
         Err(_) => return data,
     };
-    
+
     let mut bufreader = std::io::BufReader::new(&file);
     let exifreader = exif::Reader::new();
-    
+
     let exif = match exifreader.read_from_container(&mut bufreader) {
         Ok(e) => e,
         Err(_) => return data,
@@ -103,7 +107,7 @@ pub fn extract_exif(path: &Path) -> ExifData {
             }
         }
     }
-    
+
     // Dimensions
     if let Some(w) = exif.get_field(exif::Tag::PixelXDimension, exif::In::PRIMARY) {
         data.width = w.value.get_uint(0).map(|v| v as i64);
@@ -115,12 +119,18 @@ pub fn extract_exif(path: &Path) -> ExifData {
     // Camera
     if let Some(field) = exif.get_field(exif::Tag::Make, exif::In::PRIMARY) {
         if let exif::Value::Ascii(ref vec) = field.value {
-            data.camera_make = vec.first().and_then(|s| std::str::from_utf8(s).ok()).map(|s| s.trim_matches('\0').to_string());
+            data.camera_make = vec
+                .first()
+                .and_then(|s| std::str::from_utf8(s).ok())
+                .map(|s| s.trim_matches('\0').to_string());
         }
     }
     if let Some(field) = exif.get_field(exif::Tag::Model, exif::In::PRIMARY) {
         if let exif::Value::Ascii(ref vec) = field.value {
-            data.camera_model = vec.first().and_then(|s| std::str::from_utf8(s).ok()).map(|s| s.trim_matches('\0').to_string());
+            data.camera_model = vec
+                .first()
+                .and_then(|s| std::str::from_utf8(s).ok())
+                .map(|s| s.trim_matches('\0').to_string());
         }
     }
 
@@ -151,12 +161,18 @@ pub fn extract_exif(path: &Path) -> ExifData {
     data.gps_lng = lng;
     if let Some(field) = exif.get_field(exif::Tag::GPSLatitudeRef, exif::In::PRIMARY) {
         if let exif::Value::Ascii(ref vec) = field.value {
-            data.gps_lat_ref = vec.first().and_then(|s| std::str::from_utf8(s).ok()).map(|s| s.trim_matches('\0').to_string());
+            data.gps_lat_ref = vec
+                .first()
+                .and_then(|s| std::str::from_utf8(s).ok())
+                .map(|s| s.trim_matches('\0').to_string());
         }
     }
     if let Some(field) = exif.get_field(exif::Tag::GPSLongitudeRef, exif::In::PRIMARY) {
         if let exif::Value::Ascii(ref vec) = field.value {
-            data.gps_lng_ref = vec.first().and_then(|s| std::str::from_utf8(s).ok()).map(|s| s.trim_matches('\0').to_string());
+            data.gps_lng_ref = vec
+                .first()
+                .and_then(|s| std::str::from_utf8(s).ok())
+                .map(|s| s.trim_matches('\0').to_string());
         }
     }
 

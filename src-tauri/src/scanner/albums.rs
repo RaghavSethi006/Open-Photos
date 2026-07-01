@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -18,8 +18,8 @@ pub struct Album {
 }
 
 fn albums_path() -> Result<PathBuf, String> {
-    let mut path = dirs_next::data_dir()
-        .ok_or_else(|| "Could not find app data directory.".to_string())?;
+    let mut path =
+        dirs_next::data_dir().ok_or_else(|| "Could not find app data directory.".to_string())?;
     path.push("com.localphotos.app");
     fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     path.push(ALBUMS_FILE);
@@ -56,7 +56,11 @@ fn atomic_write_string(path: &PathBuf, content: &str) -> Result<(), String> {
     fs::rename(&temp_path, path).map_err(|e| e.to_string())
 }
 
-pub fn create_album(name: String, description: String, photo_paths: Vec<String>) -> Result<Album, String> {
+pub fn create_album(
+    name: String,
+    description: String,
+    photo_paths: Vec<String>,
+) -> Result<Album, String> {
     let mut albums = read_albums()?;
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)

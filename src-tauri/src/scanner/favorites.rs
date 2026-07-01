@@ -11,8 +11,8 @@ pub struct Favorites {
 }
 
 fn favorites_path() -> Result<PathBuf, String> {
-    let mut path = dirs_next::data_dir()
-        .ok_or_else(|| "Could not find app data directory.".to_string())?;
+    let mut path =
+        dirs_next::data_dir().ok_or_else(|| "Could not find app data directory.".to_string())?;
     path.push("com.localphotos.app");
     fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     path.push(FAVORITES_FILE);

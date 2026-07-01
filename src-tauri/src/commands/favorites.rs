@@ -1,7 +1,6 @@
 use crate::scanner::favorites::{
-    add_favorite as add_favorite_impl,
+    add_favorite as add_favorite_impl, list_favorites as list_favorites_impl,
     remove_favorite as remove_favorite_impl,
-    list_favorites as list_favorites_impl,
 };
 use tauri::command;
 
