@@ -97,6 +97,18 @@ pub fn add_faces(
     threshold: f32,
 ) -> Result<Vec<FaceRecord>, String> {
     let mut index = read_index()?;
+    let new_faces = add_faces_to_index(&mut index, photo_path, embeddings, model_type, threshold);
+    write_index(&index)?;
+    Ok(new_faces)
+}
+
+pub fn add_faces_to_index(
+    index: &mut FaceIndex,
+    photo_path: &str,
+    embeddings: &[crate::ai::clustering::FaceEmbedding],
+    model_type: &str,
+    threshold: f32,
+) -> Vec<FaceRecord> {
     index.model_type = model_type.to_string();
     index.similarity_threshold = threshold;
 
@@ -119,12 +131,16 @@ pub fn add_faces(
     }
 
     index.faces.extend(new_faces.clone());
-    write_index(&index)?;
-    Ok(new_faces)
+    new_faces
 }
 
 pub fn auto_cluster() -> Result<(), String> {
     let mut index = read_index()?;
+    auto_cluster_index(&mut index);
+    write_index(&index)
+}
+
+pub fn auto_cluster_index(index: &mut FaceIndex) {
     let threshold = index.similarity_threshold;
 
     let face_count = index.faces.len();
@@ -146,7 +162,7 @@ pub fn auto_cluster() -> Result<(), String> {
         .collect();
 
     if unassigned.is_empty() {
-        return Ok(());
+        return;
     }
 
     let n = unassigned.len();
@@ -206,8 +222,7 @@ pub fn auto_cluster() -> Result<(), String> {
         }
     }
 
-    update_person_counts(&mut index);
-    write_index(&index)
+    update_person_counts(index);
 }
 
 fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
@@ -373,5 +388,29 @@ mod tests {
         assert!(!path.with_extension("json.tmp").exists());
 
         let _ = fs::remove_file(path);
+    }
+
+    fn embedding(face_index: usize, photo_path: &str) -> crate::ai::clustering::FaceEmbedding {
+        crate::ai::clustering::FaceEmbedding {
+            photo_path: photo_path.to_string(),
+            face_index,
+            embedding: vec![1.0, 0.0, 0.0],
+            bbox: [0.1, 0.1, 0.2, 0.2],
+            landmarks: [[0.0, 0.0]; 5],
+            confidence: 0.9,
+        }
+    }
+
+    #[test]
+    fn add_faces_to_index_replaces_photo_faces_without_disk_roundtrip() {
+        let mut index = FaceIndex::new("buffalo_s".to_string(), 0.6);
+        let first = vec![embedding(0, "a.jpg")];
+        let second = vec![embedding(0, "a.jpg"), embedding(1, "a.jpg")];
+
+        add_faces_to_index(&mut index, "a.jpg", &first, "buffalo_s", 0.6);
+        add_faces_to_index(&mut index, "a.jpg", &second, "buffalo_s", 0.6);
+
+        assert_eq!(index.faces.len(), 2);
+        assert!(index.faces.iter().all(|face| face.photo_path == "a.jpg"));
     }
 }

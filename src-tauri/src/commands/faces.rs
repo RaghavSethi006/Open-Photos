@@ -63,6 +63,10 @@ fn landmarks_to_array(landmarks: &Option<Vec<(f32, f32)>>) -> [[f32; 2]; 5] {
     result
 }
 
+fn add_faces_found(current: usize, new_faces: usize) -> usize {
+    current + new_faces
+}
+
 #[command]
 pub async fn check_face_models(app_handle: AppHandle) -> Result<bool, String> {
     let mgr = get_analyzer_manager();
@@ -96,6 +100,10 @@ pub async fn scan_faces(
 
     let total = paths.len();
     let mut processed_photos: Vec<String> = Vec::new();
+    let mut faces_found = 0;
+    let mut face_index = index::read_index()?;
+    let mut index_changed = false;
+    let model_type = if use_large_model { "buffalo_l" } else { "buffalo_s" };
 
     for (idx, path) in paths.iter().enumerate() {
         if !is_image_ext(path) {
@@ -116,7 +124,6 @@ pub async fn scan_faces(
             continue;
         }
 
-        let model_type = if use_large_model { "buffalo_l" } else { "buffalo_s" };
         let mut face_embeddings = Vec::new();
 
         for (fi, face) in faces.iter().enumerate() {
@@ -136,12 +143,15 @@ pub async fn scan_faces(
         }
 
         if !face_embeddings.is_empty() {
-            let _ = index::add_faces(path, &face_embeddings, model_type, 0.6);
+            let new_faces =
+                index::add_faces_to_index(&mut face_index, path, &face_embeddings, model_type, 0.6);
+            faces_found = add_faces_found(faces_found, new_faces.len());
             processed_photos.push(path.clone());
+            index_changed = true;
         }
 
         if idx % 50 == 0 {
-            let _ = index::auto_cluster();
+            index::auto_cluster_index(&mut face_index);
         }
 
         let _ = app_handle.emit(
@@ -150,10 +160,15 @@ pub async fn scan_faces(
                 "scanned": idx + 1,
                 "total": total,
                 "photosWithFaces": processed_photos.len(),
-                "facesFound": 0,
+                "facesFound": faces_found,
                 "currentFile": path,
             }),
         );
+    }
+
+    if index_changed {
+        index::auto_cluster_index(&mut face_index);
+        index::write_index(&face_index)?;
     }
 
     let _ = app_handle.emit(
@@ -161,7 +176,7 @@ pub async fn scan_faces(
         serde_json::json!({
             "scanned": total,
             "photosWithFaces": processed_photos.len(),
-            "facesFound": 0,
+            "facesFound": faces_found,
         }),
     );
 
@@ -319,4 +334,20 @@ pub fn get_photo_faces(photo_path: String) -> Result<Vec<serde_json::Value>, Str
         .collect();
 
     Ok(faces)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accumulates_faces_found_from_each_processed_photo() {
+        let mut faces_found = 0;
+
+        faces_found = add_faces_found(faces_found, 2);
+        faces_found = add_faces_found(faces_found, 0);
+        faces_found = add_faces_found(faces_found, 3);
+
+        assert_eq!(faces_found, 5);
+    }
 }
