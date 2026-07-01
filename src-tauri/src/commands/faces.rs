@@ -254,8 +254,12 @@ pub fn list_people() -> Result<Vec<serde_json::Value>, String> {
 }
 
 #[command]
-pub fn name_person(face_ids: Vec<String>, name: String) -> Result<serde_json::Value, String> {
-    let person = index::assign_person(&face_ids, &name)?;
+pub fn name_person(
+    face_ids: Vec<String>,
+    name: String,
+    person_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let person = index::assign_person(&face_ids, person_id.as_deref(), &name)?;
     Ok(serde_json::json!({
         "id": person.id,
         "name": person.name,

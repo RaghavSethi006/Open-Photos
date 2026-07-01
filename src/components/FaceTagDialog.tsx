@@ -25,13 +25,13 @@ export function FaceTagDialog({ open, onClose, faceIds, onNamed }: Props) {
     }
   }, [open]);
 
-  const handleSave = async (personName: string) => {
+  const handleSave = async (personName: string, personId?: string) => {
     const finalName = personName.trim();
     if (!finalName) return;
     setSaving(true);
     setError(null);
     try {
-      await namePerson(faceIds, finalName);
+      await namePerson(faceIds, finalName, personId);
       onNamed();
       onClose();
     } catch (err) {
@@ -122,10 +122,10 @@ export function FaceTagDialog({ open, onClose, faceIds, onNamed }: Props) {
                     Or select existing person:
                   </p>
                   <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
-                    {existingPeople.map((p) => (
+                    {existingPeople.filter((p) => p.id !== '__unassigned__').map((p) => (
                       <button
                         key={p.id}
-                        onClick={() => handleSave(p.name)}
+                        onClick={() => handleSave(p.name, p.id)}
                         disabled={saving}
                         className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-[var(--color-text-muted)] hover:border-white/20 hover:text-white transition-colors disabled:opacity-50"
                       >

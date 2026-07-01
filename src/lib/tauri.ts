@@ -325,8 +325,8 @@ export async function listPeople(): Promise<PersonInfo[]> {
   return invoke('list_people');
 }
 
-export async function namePerson(faceIds: string[], name: string): Promise<PersonInfo> {
-  return invoke('name_person', { faceIds, name });
+export async function namePerson(faceIds: string[], name: string, personId?: string): Promise<PersonInfo> {
+  return invoke('name_person', { faceIds, name, personId });
 }
 
 export async function renamePerson(personId: string, name: string): Promise<void> {

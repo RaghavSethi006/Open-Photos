@@ -235,12 +235,30 @@ fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
     dot / (norm_a * norm_b)
 }
 
-pub fn assign_person(face_ids: &[String], person_name: &str) -> Result<Person, String> {
+pub fn assign_person(
+    face_ids: &[String],
+    person_id: Option<&str>,
+    person_name: &str,
+) -> Result<Person, String> {
     let mut index = read_index()?;
+    let person = assign_person_to_index(&mut index, face_ids, person_id, person_name)?;
+    write_index(&index)?;
+    Ok(person)
+}
 
-    let existing = index.people.iter().find(|p| p.name == person_name);
-    let person_id = match existing {
-        Some(p) => p.id.clone(),
+pub fn assign_person_to_index(
+    index: &mut FaceIndex,
+    face_ids: &[String],
+    person_id: Option<&str>,
+    person_name: &str,
+) -> Result<Person, String> {
+    let target_id = match person_id {
+        Some(id) => {
+            if !index.people.iter().any(|p| p.id == id) {
+                return Err("Person not found.".to_string());
+            }
+            id.to_string()
+        }
         None => {
             let id = Uuid::new_v4().to_string();
             index.people.push(Person {
@@ -255,14 +273,18 @@ pub fn assign_person(face_ids: &[String], person_name: &str) -> Result<Person, S
 
     for face in &mut index.faces {
         if face_ids.contains(&face.id) {
-            face.person_id = Some(person_id.clone());
+            face.person_id = Some(target_id.clone());
             face.rejected = false;
         }
     }
 
-    update_person_counts(&mut index);
-    write_index(&index)?;
-    Ok(index.people.iter().find(|p| p.name == person_name).unwrap().clone())
+    update_person_counts(index);
+    index
+        .people
+        .iter()
+        .find(|p| p.id == target_id)
+        .cloned()
+        .ok_or_else(|| "Person not found after assignment.".to_string())
 }
 
 pub fn merge_people(person_ids: &[String], target_name: &str) -> Result<Vec<Person>, String> {
@@ -412,5 +434,42 @@ mod tests {
 
         assert_eq!(index.faces.len(), 2);
         assert!(index.faces.iter().all(|face| face.photo_path == "a.jpg"));
+    }
+
+    #[test]
+    fn assign_person_to_index_uses_person_id_before_name() {
+        let mut index = FaceIndex::new("buffalo_s".to_string(), 0.6);
+        index.people.push(Person {
+            id: "alex-1".to_string(),
+            name: "Alex".to_string(),
+            face_count: 0,
+            thumbnail_path: String::new(),
+        });
+        index.people.push(Person {
+            id: "alex-2".to_string(),
+            name: "Alex".to_string(),
+            face_count: 0,
+            thumbnail_path: String::new(),
+        });
+        let faces = add_faces_to_index(
+            &mut index,
+            "a.jpg",
+            &[embedding(0, "a.jpg")],
+            "buffalo_s",
+            0.6,
+        );
+
+        let assigned = assign_person_to_index(
+            &mut index,
+            &[faces[0].id.clone()],
+            Some("alex-2"),
+            "Alex",
+        )
+        .unwrap();
+
+        assert_eq!(assigned.id, "alex-2");
+        assert_eq!(index.faces[0].person_id.as_deref(), Some("alex-2"));
+        assert_eq!(index.people[0].face_count, 0);
+        assert_eq!(index.people[1].face_count, 1);
     }
 }
