@@ -53,7 +53,18 @@ fn read_manifest(trash: &Path) -> Manifest {
 fn write_manifest(trash: &Path, manifest: &Manifest) -> Result<(), String> {
     let path = manifest_path(trash);
     let json = serde_json::to_string_pretty(manifest).map_err(|e| e.to_string())?;
-    fs::write(&path, json).map_err(|e| e.to_string())
+    atomic_write_string(&path, &json)
+}
+
+fn atomic_write_string(path: &Path, content: &str) -> Result<(), String> {
+    let temp_path = path.with_extension("json.tmp");
+    fs::write(&temp_path, content).map_err(|e| e.to_string())?;
+
+    if path.exists() {
+        fs::remove_file(path).map_err(|e| e.to_string())?;
+    }
+
+    fs::rename(&temp_path, path).map_err(|e| e.to_string())
 }
 
 fn timestamp_prefix() -> String {
@@ -61,10 +72,32 @@ fn timestamp_prefix() -> String {
 }
 
 fn parse_timestamp_from_name(name: &str) -> Option<i64> {
-    let ts_part = name.split('_').next()?;
+    let ts_part = name.get(..17)?;
     NaiveDateTime::parse_from_str(ts_part, "%Y-%m-%d_%H%M%S")
         .ok()
         .map(|dt| dt.and_utc().timestamp())
+}
+
+fn strip_trash_prefix(name: &str) -> &str {
+    if parse_timestamp_from_name(name).is_none() {
+        return name;
+    }
+
+    let Some(mut rest) = name.get(18..) else {
+        return name;
+    };
+
+    if let Some((maybe_counter, after_counter)) = rest.split_once('_') {
+        if !maybe_counter.is_empty() && maybe_counter.chars().all(|c| c.is_ascii_digit()) {
+            rest = after_counter;
+        }
+    }
+
+    if rest.is_empty() {
+        name
+    } else {
+        rest
+    }
 }
 
 pub fn move_to_trash(paths: Vec<String>, trash_folder: String) -> Result<Vec<TrashEntry>, String> {
@@ -323,27 +356,17 @@ pub fn restore_from_trash(
                 // Original parent doesn't exist, restore to trash parent
                 let trash_parent = trash.parent().unwrap_or(&trash);
                 fs::create_dir_all(trash_parent).map_err(|e| e.to_string())?;
-                trash_parent.join(
-                    file_name
-                        .split('_')
-                        .skip(1)
-                        .collect::<Vec<_>>()
-                        .join("_"),
-                )
+                trash_parent.join(strip_trash_prefix(&file_name))
             }
         } else {
             // No manifest entry, just strip timestamp prefix
             let trash_parent = trash.parent().unwrap_or(&trash);
             fs::create_dir_all(trash_parent).map_err(|e| e.to_string())?;
-            let restored_name = file_name
-                .split('_')
-                .skip(1)
-                .collect::<Vec<_>>()
-                .join("_");
+            let restored_name = strip_trash_prefix(&file_name);
             trash_parent.join(if restored_name.is_empty() {
-                &file_name
+                file_name.as_str()
             } else {
-                &restored_name
+                restored_name
             })
         };
 
@@ -367,4 +390,65 @@ pub fn restore_from_trash(
 
     let _ = write_manifest(&trash, &manifest);
     Ok(restored)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let mut dir = std::env::temp_dir();
+        dir.push(format!(
+            "lgp_trash_test_{}_{}",
+            name,
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn parses_full_timestamp_prefix() {
+        let timestamp = parse_timestamp_from_name("2026-07-01_153045_photo.jpg").unwrap();
+        let expected = NaiveDateTime::parse_from_str("2026-07-01_153045", "%Y-%m-%d_%H%M%S")
+            .unwrap()
+            .and_utc()
+            .timestamp();
+
+        assert_eq!(timestamp, expected);
+    }
+
+    #[test]
+    fn strips_timestamp_prefix_without_collision_counter() {
+        assert_eq!(
+            strip_trash_prefix("2026-07-01_153045_photo.jpg"),
+            "photo.jpg"
+        );
+    }
+
+    #[test]
+    fn strips_timestamp_prefix_with_collision_counter() {
+        assert_eq!(
+            strip_trash_prefix("2026-07-01_153045_1_photo.jpg"),
+            "photo.jpg"
+        );
+    }
+
+    #[test]
+    fn manifest_write_leaves_no_temp_file_after_success() {
+        let dir = unique_temp_dir("manifest");
+        let manifest = Manifest {
+            files: HashMap::from([("trash.jpg".to_string(), "original.jpg".to_string())]),
+        };
+
+        write_manifest(&dir, &manifest).unwrap();
+
+        assert!(manifest_path(&dir).exists());
+        assert!(!dir.join("manifest.json.tmp").exists());
+
+        let _ = fs::remove_dir_all(dir);
+    }
 }
