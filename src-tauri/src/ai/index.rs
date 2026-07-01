@@ -71,8 +71,23 @@ pub fn read_index() -> Result<FaceIndex, String> {
 
 pub fn write_index(index: &FaceIndex) -> Result<(), String> {
     let path = index_path()?;
+    write_index_to_path(&path, index)
+}
+
+fn write_index_to_path(path: &PathBuf, index: &FaceIndex) -> Result<(), String> {
     let content = serde_json::to_string_pretty(index).map_err(|e| e.to_string())?;
-    fs::write(&path, content).map_err(|e| e.to_string())
+    atomic_write_string(path, &content)
+}
+
+fn atomic_write_string(path: &PathBuf, content: &str) -> Result<(), String> {
+    let temp_path = path.with_extension("json.tmp");
+    fs::write(&temp_path, content).map_err(|e| e.to_string())?;
+
+    if path.exists() {
+        fs::remove_file(path).map_err(|e| e.to_string())?;
+    }
+
+    fs::rename(&temp_path, path).map_err(|e| e.to_string())
 }
 
 pub fn add_faces(
@@ -324,5 +339,39 @@ fn update_person_counts(index: &mut FaceIndex) {
         let entry = counts.get(&person.id);
         person.face_count = entry.map(|(c, _)| *c).unwrap_or(0);
         person.thumbnail_path = entry.map(|(_, p)| p.clone()).unwrap_or_default();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_file(name: &str) -> PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "lgp_face_index_test_{}_{}.json",
+            name,
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        path
+    }
+
+    #[test]
+    fn write_index_to_path_leaves_parseable_json_without_temp_file() {
+        let path = unique_temp_file("atomic");
+        let index = FaceIndex::new("buffalo_s".to_string(), 0.6);
+
+        write_index_to_path(&path, &index).unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        let parsed: FaceIndex = serde_json::from_str(&content).unwrap();
+        assert_eq!(parsed.model_type, "buffalo_s");
+        assert!(!path.with_extension("json.tmp").exists());
+
+        let _ = fs::remove_file(path);
     }
 }

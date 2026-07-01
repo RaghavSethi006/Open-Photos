@@ -37,8 +37,23 @@ fn read_albums() -> Result<Vec<Album>, String> {
 
 fn write_albums(albums: &[Album]) -> Result<(), String> {
     let path = albums_path()?;
+    write_albums_to_path(&path, albums)
+}
+
+fn write_albums_to_path(path: &PathBuf, albums: &[Album]) -> Result<(), String> {
     let content = serde_json::to_string_pretty(albums).map_err(|e| e.to_string())?;
-    fs::write(&path, content).map_err(|e| e.to_string())
+    atomic_write_string(path, &content)
+}
+
+fn atomic_write_string(path: &PathBuf, content: &str) -> Result<(), String> {
+    let temp_path = path.with_extension("json.tmp");
+    fs::write(&temp_path, content).map_err(|e| e.to_string())?;
+
+    if path.exists() {
+        fs::remove_file(path).map_err(|e| e.to_string())?;
+    }
+
+    fs::rename(&temp_path, path).map_err(|e| e.to_string())
 }
 
 pub fn create_album(name: String, description: String, photo_paths: Vec<String>) -> Result<Album, String> {
@@ -132,4 +147,45 @@ pub fn remove_photos_from_album(id: String, photo_paths: Vec<String>) -> Result<
     let result = album.clone();
     write_albums(&albums)?;
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_file(name: &str) -> PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "lgp_albums_test_{}_{}.json",
+            name,
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        path
+    }
+
+    #[test]
+    fn write_albums_to_path_leaves_parseable_json_without_temp_file() {
+        let path = unique_temp_file("atomic");
+        let albums = vec![Album {
+            id: "album-1".to_string(),
+            name: "Trip".to_string(),
+            description: "Summer".to_string(),
+            cover_path: "a.jpg".to_string(),
+            created_at: 123,
+            photo_paths: vec!["a.jpg".to_string()],
+        }];
+
+        write_albums_to_path(&path, &albums).unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        let parsed: Vec<Album> = serde_json::from_str(&content).unwrap();
+        assert_eq!(parsed[0].name, "Trip");
+        assert!(!path.with_extension("json.tmp").exists());
+
+        let _ = fs::remove_file(path);
+    }
 }
