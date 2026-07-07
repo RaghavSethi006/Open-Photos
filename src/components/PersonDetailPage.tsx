@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, User, Loader2 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useStore } from '../store/useStore';
 import { getPersonPhotos, listPeople, type PersonInfo, isTauriRuntime } from '../lib/tauri';
+import { Lightbox } from './Lightbox';
 
 interface DisplayPhoto {
   path: string;
@@ -11,6 +12,8 @@ interface DisplayPhoto {
   width: number;
   height: number;
   aspect: number;
+  src?: string;
+  isVideo?: boolean;
 }
 
 export function PersonDetailPage() {
@@ -18,6 +21,7 @@ export function PersonDetailPage() {
   const [person, setPerson] = useState<PersonInfo | null>(null);
   const [photos, setPhotos] = useState<DisplayPhoto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (!selectedPersonId || !isTauriRuntime()) {
@@ -33,7 +37,15 @@ export function PersonDetailPage() {
         const paths = await getPersonPhotos(selectedPersonId);
         const displayPhotos: DisplayPhoto[] = paths.map((p: string) => {
           const name = p.split('\\').pop()?.split('/').pop() || p;
-          return { path: p, name, width: 300, height: 200, aspect: 4 / 3 };
+          return {
+            path: p,
+            name,
+            width: 300,
+            height: 200,
+            aspect: 4 / 3,
+            src: convertFileSrc(p),
+            isVideo: /\.(mp4|mov|mkv|avi|wmv|flv|m4v|webm)$/i.test(name),
+          };
         });
         setPhotos(displayPhotos);
       } catch {
@@ -92,6 +104,7 @@ export function PersonDetailPage() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.02 }}
+                onClick={() => setLightboxIndex(i)}
                 className="glass-panel rounded-xl overflow-hidden group cursor-pointer interactive hover:bg-white/[0.06] transition-colors"
               >
                 <div className="aspect-[4/3] bg-black/40 relative overflow-hidden">
@@ -112,6 +125,18 @@ export function PersonDetailPage() {
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {lightboxIndex !== null && (
+          <Lightbox
+            photos={photos}
+            index={lightboxIndex}
+            onClose={() => setLightboxIndex(null)}
+            onPrev={() => setLightboxIndex((i) => (i !== null && i > 0 ? i - 1 : i))}
+            onNext={() => setLightboxIndex((i) => (i !== null && i < photos.length - 1 ? i + 1 : i))}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
