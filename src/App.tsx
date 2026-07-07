@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
 import { ScanProgressHUD } from './components/ScanProgressHUD';
@@ -23,7 +23,7 @@ import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
 function App() {
   useGlobalShortcuts();
   const { currentView, setCurrentView } = useStore();
-  const { accentColor, theme, startupView } = useSettingsStore();
+  const { accentColor, theme } = useSettingsStore();
 
   // Apply accent color and theme on mount and when they change
   useEffect(() => {
@@ -35,29 +35,33 @@ function App() {
     document.documentElement.classList.add(theme);
   }, [theme]);
 
-  // Apply startup view on first mount
+  // Apply startup view on mount only — reading from store directly to avoid re-running on setting change
+  const startupDone = useRef(false);
   useEffect(() => {
-    if (startupView && startupView !== 'settings') {
-      setCurrentView(startupView as any);
+    if (startupDone.current) return;
+    startupDone.current = true;
+    const sv = useSettingsStore.getState().startupView;
+    if (sv) {
+      setCurrentView(sv as any);
     }
-  }, []);
+  }, [setCurrentView]);
 
-  // Run trash cleanup on mount
-  const { trashFolder, trashRetentionDays } = useSettingsStore.getState();
+  // Run trash cleanup on mount — read from store inside the effect to avoid stale snapshot
   useEffect(() => {
+    const { trashFolder, trashRetentionDays } = useSettingsStore.getState();
     if (trashFolder.trim()) {
       cleanupTrashFolder(trashFolder, trashRetentionDays).catch(() => {});
     }
   }, []);
 
   // Setup Tauri event listeners
+  const unlistenRef = useRef<() => void>(undefined);
   useEffect(() => {
-    let unlisten: () => void;
     setupTauriListeners().then((cleanup) => {
-      unlisten = cleanup;
+      unlistenRef.current = cleanup;
     });
     return () => {
-      if (unlisten) unlisten();
+      unlistenRef.current?.();
     };
   }, []);
 
