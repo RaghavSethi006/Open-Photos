@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export interface ContextMenuItem {
@@ -18,15 +18,23 @@ interface Props {
 
 export function ContextMenu({ x, y, items, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  const [menuHeight, setMenuHeight] = useState(0);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const combinedRef = useCallback((node: HTMLDivElement | null) => {
+    (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
+    if (node) setMenuHeight(node.offsetHeight);
+  }, []);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
+        onCloseRef.current();
       }
     };
     const keyHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     document.addEventListener('mousedown', handler);
     document.addEventListener('keydown', keyHandler);
@@ -34,15 +42,16 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
       document.removeEventListener('mousedown', handler);
       document.removeEventListener('keydown', keyHandler);
     };
-  }, [onClose]);
+  }, []);
 
   const adjustedX = Math.min(x, window.innerWidth - 200);
-  const adjustedY = Math.min(y, window.innerHeight - items.length * 40);
+  const estimatedHeight = menuHeight || items.length * 40;
+  const adjustedY = Math.min(y, window.innerHeight - estimatedHeight);
 
   return (
     <AnimatePresence>
       <motion.div
-        ref={ref}
+        ref={combinedRef}
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
