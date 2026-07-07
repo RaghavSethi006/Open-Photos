@@ -12,10 +12,14 @@ import {
   X,
   Pencil,
   CheckCheck,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
 import { useState } from 'react';
 import { ACCENT_COLORS, useSettingsStore, type AccentColor } from '../store/useSettingsStore';
 import { useSavedPathsStore } from '../store/useSavedPathsStore';
+import { clusterFaces } from '../lib/tauri';
+import { useToastStore } from '../store/useToastStore';
 
 export function SettingsPage() {
   const settings = useSettingsStore();
@@ -23,6 +27,27 @@ export function SettingsPage() {
 
   const [editingPathId, setEditingPathId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [reclustering, setReclustering] = useState(false);
+  const addToast = useToastStore((s) => s.addToast);
+
+  const handleRecluster = async () => {
+    setReclustering(true);
+    try {
+      await clusterFaces(settings.faceSimilarityThreshold);
+      addToast({
+        message: 'Faces successfully re-clustered with the new threshold.',
+        type: 'success',
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addToast({
+        message: `Failed to re-cluster: ${msg}`,
+        type: 'error',
+      });
+    } finally {
+      setReclustering(false);
+    }
+  };
 
   const browse = async (setter: (value: string) => void) => {
     const selected = await open({ directory: true, multiple: false });
@@ -402,12 +427,22 @@ export function SettingsPage() {
               </p>
               <div className="flex gap-3">
                 <button
-                  className="flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all border-[var(--color-primary)]/50 bg-[var(--color-primary)]/15 text-white"
+                  onClick={() => settings.updateSetting('faceModelSize', 'small')}
+                  className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all ${
+                    settings.faceModelSize === 'small'
+                      ? 'border-[var(--color-primary)]/50 bg-[var(--color-primary)]/15 text-white'
+                      : 'border-white/10 bg-white/[0.03] text-[var(--color-text-muted)] hover:text-white'
+                  }`}
                 >
                   Small (Fast)
                 </button>
                 <button
-                  className="flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all border-white/10 bg-white/[0.03] text-[var(--color-text-muted)] hover:text-white"
+                  onClick={() => settings.updateSetting('faceModelSize', 'large')}
+                  className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all ${
+                    settings.faceModelSize === 'large'
+                      ? 'border-[var(--color-primary)]/50 bg-[var(--color-primary)]/15 text-white'
+                      : 'border-white/10 bg-white/[0.03] text-[var(--color-text-muted)] hover:text-white'
+                  }`}
                 >
                   Large (Accurate)
                 </button>
@@ -425,10 +460,27 @@ export function SettingsPage() {
                   min={0.3}
                   max={0.8}
                   step={0.05}
+                  value={settings.faceSimilarityThreshold}
+                  onChange={(e) => settings.updateSetting('faceSimilarityThreshold', parseFloat(e.target.value))}
                   className="flex-1 accent-[var(--color-primary)]"
                 />
-                <span className="text-sm text-white font-mono w-10 text-right">0.60</span>
+                <span className="text-sm text-white font-mono w-10 text-right">
+                  {settings.faceSimilarityThreshold.toFixed(2)}
+                </span>
               </div>
+              <button
+                type="button"
+                onClick={handleRecluster}
+                disabled={reclustering}
+                className="mt-3 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-50 transition-colors"
+              >
+                {reclustering ? (
+                  <Loader2 size={13} className="animate-spin text-[var(--color-primary)]" />
+                ) : (
+                  <RefreshCw size={13} />
+                )}
+                {reclustering ? 'Re-clustering...' : 'Recluster Faces'}
+              </button>
             </label>
           </div>
         </section>
