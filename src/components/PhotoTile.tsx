@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   Play,
@@ -35,7 +35,6 @@ interface Props {
   onToggleFavorite?: () => void;
   isFavorite?: boolean;
   onDelete?: () => void;
-  gap?: number;
 }
 
 export function PhotoTile({
@@ -49,7 +48,6 @@ export function PhotoTile({
   onToggleFavorite,
   isFavorite,
   onDelete,
-  gap = 4,
 }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
@@ -57,6 +55,8 @@ export function PhotoTile({
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const addToast = useToastStore((s) => s.addToast);
+  const pathRef = useRef(photo.path);
+  pathRef.current = photo.path;
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -66,30 +66,33 @@ export function PhotoTile({
 
   const copyPath = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(photo.path);
+      await navigator.clipboard.writeText(pathRef.current);
       addToast({ type: 'info', message: 'Path copied to clipboard' });
     } catch { /* ignore */ }
-  }, [photo.path, addToast]);
+  }, [addToast]);
 
-  const ctxItems: ContextMenuItem[] = [
-    { label: 'Open', icon: <Eye size={14} />, onClick: onOpen },
-  ];
-  if (onToggleFavorite) {
-    ctxItems.push({
-      label: isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
-      icon: <StarIcon size={14} />,
-      onClick: onToggleFavorite,
-    });
-  }
-  ctxItems.push(
-    { label: 'Select', icon: <Check size={14} />, onClick: onSelectClick },
-    { label: 'Copy Path', icon: <Copy size={14} />, onClick: copyPath },
-  );
-  if (onDelete) {
-    ctxItems.push(
-      { label: 'Move to Trash', icon: <Trash2 size={14} />, danger: true, onClick: onDelete },
+  const ctxItems: ContextMenuItem[] = useMemo(() => {
+    const items: ContextMenuItem[] = [
+      { label: 'Open', icon: <Eye size={14} />, onClick: onOpen },
+    ];
+    if (onToggleFavorite) {
+      items.push({
+        label: isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
+        icon: <StarIcon size={14} />,
+        onClick: onToggleFavorite,
+      });
+    }
+    items.push(
+      { label: 'Select', icon: <Check size={14} />, onClick: onSelectClick },
+      { label: 'Copy Path', icon: <Copy size={14} />, onClick: copyPath },
     );
-  }
+    if (onDelete) {
+      items.push(
+        { label: 'Move to Trash', icon: <Trash2 size={14} />, danger: true, onClick: onDelete },
+      );
+    }
+    return items;
+  }, [onOpen, onToggleFavorite, isFavorite, onSelectClick, copyPath, onDelete]);
 
   useEffect(() => {
     if (!showMenu) return;
@@ -133,7 +136,6 @@ export function PhotoTile({
   const style = {
     width: photo.displayWidth,
     height: photo.displayHeight,
-    marginRight: gap,
   };
 
   return (
