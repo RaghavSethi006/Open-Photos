@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import { useStore } from '../store/useStore';
 
 export function useGlobalShortcuts() {
-  const { searchQuery, setSearchQuery, currentView, setCurrentView } = useStore();
+  const setSearchQuery = useStore((s) => s.setSearchQuery);
+  const setCurrentView = useStore((s) => s.setCurrentView);
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
@@ -52,5 +53,5 @@ export function useGlobalShortcuts() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [searchQuery, setSearchQuery, currentView, setCurrentView]);
+  }, [setSearchQuery, setCurrentView]);
 }
