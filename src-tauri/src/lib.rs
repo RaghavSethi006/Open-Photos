@@ -29,6 +29,7 @@ pub fn run() {
             commands::albums::rename_album,
             commands::albums::add_photos_to_album,
             commands::albums::remove_photos_from_album,
+            commands::file::move_file,
             commands::favorites::add_favorite,
             commands::favorites::remove_favorite,
             commands::favorites::list_favorites,
