@@ -1,11 +1,17 @@
 import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import {
-  Play, Pause, X, Info, ChevronLeft, ChevronRight
+  Play, Pause, X, Info, ChevronLeft, ChevronRight, Star, Trash2, Copy, FolderInput
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { PhotoInfoPanel } from './PhotoInfoPanel';
 import { PhotoFaceOverlay } from './PhotoFaceOverlay';
+import { useFavoritesStore } from '../store/useFavoritesStore';
+import { useToastStore } from '../store/useToastStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { moveFilesToTrash, moveFile } from '../lib/tauri';
+import { open } from '@tauri-apps/plugin-dialog';
 
 export interface LightboxPhoto {
   path: string;
@@ -54,6 +60,13 @@ export function Lightbox({ photos, index, onClose, onPrev, onNext }: Props) {
   const [containerDims, setContainerDims] = useState<{ width: number; height: number } | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
+  const { paths: favPaths, toggle: toggleFavorite, loadFavorites } = useFavoritesStore();
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    loadFavorites();
+  }, [loadFavorites]);
+
   useEffect(() => {
     setShowInfo(false);
     setScale(1);
@@ -86,12 +99,18 @@ export function Lightbox({ photos, index, onClose, onPrev, onNext }: Props) {
     };
   }, [slideshow, index, photos.length, onNext]);
 
-  // Keyboard controls
+  // Keyboard controls — use refs to avoid re-registration when callbacks change
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const onPrevRef = useRef(onPrev);
+  onPrevRef.current = onPrev;
+  const onNextRef = useRef(onNext);
+  onNextRef.current = onNext;
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-      if (e.key === 'ArrowLeft') onPrev();
-      if (e.key === 'ArrowRight') onNext();
+      if (e.key === 'Escape') onCloseRef.current();
+      if (e.key === 'ArrowLeft') onPrevRef.current();
+      if (e.key === 'ArrowRight') onNextRef.current();
       if (e.key === ' ' || e.key === 'Space') {
         e.preventDefault();
         setSlideshow((s) => !s);
@@ -100,7 +119,7 @@ export function Lightbox({ photos, index, onClose, onPrev, onNext }: Props) {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, onPrev, onNext]);
+  }, []);
 
   const handleWheel = (e: React.WheelEvent) => {
     e.stopPropagation();
@@ -132,10 +151,12 @@ export function Lightbox({ photos, index, onClose, onPrev, onNext }: Props) {
       setScale(1);
       setPosition({ x: 0, y: 0 });
     } else {
-      setScale(2.5);
+      const zoomScale = 2.5;
+      setScale(zoomScale);
       const rect = e.currentTarget.getBoundingClientRect();
-      const x = (rect.width / 2 - e.clientX) * 0.5;
-      const y = (rect.height / 2 - e.clientY) * 0.5;
+      // Offset relative to element center so the clicked point stays centered
+      const x = (rect.width / 2 - (e.clientX - rect.left)) * (zoomScale - 1);
+      const y = (rect.height / 2 - (e.clientY - rect.top)) * (zoomScale - 1);
       setPosition({ x, y });
     }
   };
@@ -156,9 +177,53 @@ export function Lightbox({ photos, index, onClose, onPrev, onNext }: Props) {
     });
     ro.observe(imgRef.current);
     return () => ro.disconnect();
-  }, [photo?.path, scale]);
+  }, [photo?.path]);
 
   if (!photo) return null;
+
+  const isFav = favPaths.has(photo.path);
+
+  const handleCopyPath = async () => {
+    try {
+      await navigator.clipboard.writeText(photo.path);
+      addToast({ type: 'info', message: 'Path copied to clipboard' });
+    } catch { /* ignore */ }
+  };
+
+  const handleToggleFavorite = async () => {
+    await toggleFavorite(photo.path);
+  };
+
+  const handleDelete = async () => {
+    const tf = useSettingsStore.getState().trashFolder;
+    if (!tf.trim()) {
+      addToast({ type: 'error', message: 'Please set a Trash folder in Settings first.' });
+      return;
+    }
+    try {
+      await moveFilesToTrash([photo.path], tf);
+      addToast({ type: 'success', message: 'Moved to trash' });
+      onClose();
+    } catch (err) {
+      addToast({ type: 'error', message: String(err) });
+    }
+  };
+
+  const handleMove = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Select destination folder',
+      });
+      if (!selected) return;
+      await moveFile(photo.path, selected);
+      addToast({ type: 'success', message: 'File moved' });
+      onClose();
+    } catch (err) {
+      addToast({ type: 'error', message: String(err) });
+    }
+  };
 
   const isVideo = photo.isVideo !== undefined
     ? photo.isVideo
@@ -166,7 +231,7 @@ export function Lightbox({ photos, index, onClose, onPrev, onNext }: Props) {
 
   const assetUrl = photo.src || (isTauri ? convertFileSrc(photo.path) : photo.path);
 
-  return (
+  return createPortal(
     <motion.div
       key="lightbox"
       initial={{ opacity: 0 }}
@@ -178,41 +243,75 @@ export function Lightbox({ photos, index, onClose, onPrev, onNext }: Props) {
       onMouseUp={handleMouseUp}
       onMouseMove={handleMouseMove}
     >
-      {/* Top actions */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          setSlideshow(!slideshow);
-        }}
-        className={`absolute top-4 left-4 z-30 p-2 rounded-full transition-colors ${
-          slideshow ? 'bg-[var(--color-primary)] text-white' : 'bg-white/10 hover:bg-white/20 text-white'
-        }`}
-        title={slideshow ? 'Stop slideshow' : 'Start slideshow'}
-      >
-        {slideshow ? <Pause size={18} /> : <Play size={18} />}
-      </button>
-
+      {/* Top bar - Close */}
       <button
         onClick={onClose}
-        className={`absolute z-30 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all ${
-          showInfo ? 'top-4 right-[19rem]' : 'top-4 right-4'
-        }`}
+        className="absolute top-4 left-4 z-30 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+        title="Close (Esc)"
       >
         <X size={20} />
       </button>
 
-      {!showInfo && (
+      {/* Top bar - Actions */}
+      <div
+        className={`absolute top-4 z-30 flex items-center gap-1.5 transition-all ${
+          showInfo ? 'right-[19rem]' : 'right-4'
+        }`}
+      >
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowInfo(true);
-          }}
-          className="absolute top-4 right-16 z-30 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+          onClick={(e) => { e.stopPropagation(); handleCopyPath(); }}
+          className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+          title="Copy path"
+        >
+          <Copy size={16} />
+        </button>
+
+        <button
+          onClick={(e) => { e.stopPropagation(); handleToggleFavorite(); }}
+          className={`p-2 rounded-full transition-colors ${
+            isFav ? 'bg-yellow-500/20 text-yellow-400' : 'bg-white/10 hover:bg-white/20 text-white'
+          }`}
+          title={isFav ? 'Remove from favorites' : 'Add to favorites'}
+        >
+          <Star size={16} className={isFav ? 'fill-yellow-400' : ''} />
+        </button>
+
+        {isTauri && (
+          <button
+            onClick={(e) => { e.stopPropagation(); handleMove(); }}
+            className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            title="Move to folder"
+          >
+            <FolderInput size={16} />
+          </button>
+        )}
+
+        <button
+          onClick={(e) => { e.stopPropagation(); handleDelete(); }}
+          className="p-2 rounded-full bg-white/10 hover:bg-red-500/30 text-white hover:text-red-400 transition-colors"
+          title="Move to trash"
+        >
+          <Trash2 size={16} />
+        </button>
+
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowInfo((s) => !s); }}
+          className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
           title="Photo info (I)"
         >
-          <Info size={18} />
+          <Info size={16} />
         </button>
-      )}
+
+        <button
+          onClick={(e) => { e.stopPropagation(); setSlideshow(!slideshow); }}
+          className={`p-2 rounded-full transition-colors ${
+            slideshow ? 'bg-[var(--color-primary)] text-white' : 'bg-white/10 hover:bg-white/20 text-white'
+          }`}
+          title={slideshow ? 'Stop slideshow' : 'Start slideshow'}
+        >
+          {slideshow ? <Pause size={16} /> : <Play size={16} />}
+        </button>
+      </div>
 
       {/* Bottom bar */}
       <div
@@ -311,6 +410,7 @@ export function Lightbox({ photos, index, onClose, onPrev, onNext }: Props) {
       </div>
 
       <PhotoInfoPanel path={photo.path} open={showInfo} onClose={() => setShowInfo(false)} />
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }
