@@ -138,52 +138,54 @@ export function PhotoTile({
 
   return (
     <motion.div
-      className="relative shrink-0 overflow-hidden rounded-sm cursor-pointer group bg-white/5"
+      className="relative shrink-0 rounded-sm cursor-pointer group bg-white/5"
       style={style}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
     >
-      {!loaded && !errored && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Loader2 size={20} className="text-white/20 animate-spin" />
-        </div>
-      )}
-
-      {errored ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-white/20">
-          <ImageOff size={20} />
-          <span className="text-[10px]">error</span>
-        </div>
-      ) : !isPhoto ? (
-        <div className="relative w-full h-full">
-          <video
-            src={assetUrl}
-            className="w-full h-full object-cover"
-            muted
-            preload="metadata"
-            onLoadedMetadata={() => setLoaded(true)}
-            onError={() => setErrored(true)}
-          />
+      <div className="absolute inset-0 overflow-hidden rounded-sm">
+        {!loaded && !errored && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center">
-              <Play size={18} className="text-white ml-0.5" fill="white" />
+            <Loader2 size={20} className="text-white/20 animate-spin" />
+          </div>
+        )}
+
+        {errored ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-white/20">
+            <ImageOff size={20} />
+            <span className="text-[10px]">error</span>
+          </div>
+        ) : !isPhoto ? (
+          <div className="relative w-full h-full">
+            <video
+              src={assetUrl}
+              className="w-full h-full object-cover"
+              muted
+              preload="metadata"
+              onLoadedMetadata={() => setLoaded(true)}
+              onError={() => setErrored(true)}
+            />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center">
+                <Play size={18} className="text-white ml-0.5" fill="white" />
+              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        <img
-          src={assetUrl}
-          alt={photo.name}
-          className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-          loading="lazy"
-          onLoad={() => setLoaded(true)}
-          onError={() => setErrored(true)}
-          draggable={false}
-        />
-      )}
+        ) : (
+          <img
+            src={assetUrl}
+            alt={photo.name}
+            className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+            loading="lazy"
+            onLoad={() => setLoaded(true)}
+            onError={() => setErrored(true)}
+            draggable={false}
+          />
+        )}
 
-      {/* Hover overlay */}
-      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-150" />
+        {/* Hover overlay */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-150" />
+      </div>
 
       {/* Selection mode checkbox */}
       {selectionMode && (

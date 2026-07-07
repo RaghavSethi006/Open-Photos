@@ -14,7 +14,7 @@ export function FaceDetectProgressHUD() {
           initial={{ opacity: 0, y: 20, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 20, scale: 0.95 }}
-          className="fixed bottom-6 right-6 z-50 glass-panel rounded-2xl p-4 w-80 flex flex-col gap-3"
+          className="fixed bottom-[7.5rem] right-6 z-50 glass-panel rounded-2xl p-4 w-80 flex flex-col gap-3"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
