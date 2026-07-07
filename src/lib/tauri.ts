@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useProgressStore, useFaceScanStore } from '../store/useStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useToastStore } from '../store/useToastStore';
 
 export interface ScanProgress {
   scanned: number;
@@ -85,11 +86,28 @@ export async function setupTauriListeners() {
     }, 3000);
   });
 
+  const unlistenModelDownloadStart = await listen('face:model-download-start', () => {
+    useFaceScanStore.getState().setScanning(true);
+    useToastStore.getState().addToast({
+      message: 'Downloading face AI models...',
+      type: 'info',
+    });
+  });
+
+  const unlistenModelDownloadComplete = await listen('face:model-download-complete', () => {
+    useToastStore.getState().addToast({
+      message: 'Face AI models ready',
+      type: 'success',
+    });
+  });
+
   return () => {
     unlistenProgress();
     unlistenComplete();
     unlistenFaceProgress();
     unlistenFaceComplete();
+    unlistenModelDownloadStart();
+    unlistenModelDownloadComplete();
   };
 }
 
@@ -322,12 +340,12 @@ export interface PhotoFaceInfo {
   personName: string;
 }
 
-export async function checkFaceModels(): Promise<boolean> {
-  return invoke('check_face_models');
+export async function checkFaceModels(modelSize?: string): Promise<boolean> {
+  return invoke('check_face_models', { modelSize: modelSize ?? 'small' });
 }
 
-export async function scanFaces(paths: string[], useLargeModel: boolean): Promise<string[]> {
-  return invoke('scan_faces', { paths, useLargeModel });
+export async function scanFaces(paths: string[], useLargeModel: boolean, threshold?: number): Promise<string[]> {
+  return invoke('scan_faces', { paths, useLargeModel, threshold });
 }
 
 export async function clusterFaces(threshold: number): Promise<any[]> {
@@ -352,6 +370,14 @@ export async function mergePeople(personIds: string[], targetName: string): Prom
 
 export async function deletePerson(personId: string): Promise<void> {
   return invoke('delete_person', { personId });
+}
+
+export async function rejectFaces(faceIds: string[]): Promise<void> {
+  return invoke('reject_faces', { faceIds });
+}
+
+export async function reclusterFaces(): Promise<void> {
+  return invoke('recluster_faces');
 }
 
 export async function getPersonPhotos(personId: string): Promise<string[]> {
