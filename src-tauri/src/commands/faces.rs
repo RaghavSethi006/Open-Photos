@@ -2,7 +2,14 @@ use crate::ai::analyzer::{get_analyzer_manager, ModelSize};
 use crate::ai::clustering::FaceEmbedding;
 use crate::ai::index::{self, FaceRecord};
 use base64::Engine;
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 use tauri::{command, AppHandle, Emitter};
+
+fn thumb_cache() -> &'static Mutex<HashMap<String, String>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 fn crop_face_to_data_url(photo_path: &str, bbox: &[f32; 4]) -> Result<String, String> {
     let img = image::open(photo_path).map_err(|e| format!("Failed to open image: {}", e))?;
@@ -41,6 +48,19 @@ fn crop_face_to_data_url(photo_path: &str, bbox: &[f32; 4]) -> Result<String, St
     Ok(format!("data:image/jpeg;base64,{}", b64))
 }
 
+fn cached_face_thumbnail(face_id: &str, photo_path: &str, bbox: &[f32; 4]) -> Option<String> {
+    if let Ok(cache) = thumb_cache().lock() {
+        if let Some(url) = cache.get(face_id) {
+            return Some(url.clone());
+        }
+    }
+    let url = crop_face_to_data_url(photo_path, bbox).ok()?;
+    if let Ok(mut cache) = thumb_cache().lock() {
+        cache.insert(face_id.to_string(), url.clone());
+    }
+    Some(url)
+}
+
 fn is_image_ext(path: &str) -> bool {
     let lower = path.to_lowercase();
     lower.ends_with(".jpg")
@@ -63,25 +83,34 @@ fn landmarks_to_array(landmarks: &Option<Vec<(f32, f32)>>) -> [[f32; 2]; 5] {
     result
 }
 
-fn add_faces_found(current: usize, new_faces: usize) -> usize {
-    current + new_faces
-}
-
 #[command]
-pub async fn check_face_models(app_handle: AppHandle) -> Result<bool, String> {
+pub async fn check_face_models(
+    app_handle: AppHandle,
+    model_size: Option<String>,
+) -> Result<bool, String> {
+    let size = match model_size.as_deref() {
+        Some("large") => ModelSize::Large,
+        _ => ModelSize::Small,
+    };
     let mgr = get_analyzer_manager();
     if mgr.is_ready() {
-        return Ok(true);
+        if let Ok(current_size) = mgr.get_model_size() {
+            if current_size == size {
+                return Ok(true);
+            }
+        }
     }
-    mgr.ensure_initialized(Some(&app_handle), ModelSize::Small)
-        .await?;
+    mgr.ensure_initialized(Some(&app_handle), size).await?;
     Ok(true)
 }
+
+const CHECKPOINT_EVERY: usize = 25;
 
 #[command]
 pub async fn scan_faces(
     paths: Vec<String>,
     use_large_model: bool,
+    threshold: Option<f32>,
     app_handle: AppHandle,
 ) -> Result<Vec<String>, String> {
     let model_size = if use_large_model {
@@ -89,10 +118,10 @@ pub async fn scan_faces(
     } else {
         ModelSize::Small
     };
+    let similarity_threshold = threshold.unwrap_or(0.55);
 
     let mgr = get_analyzer_manager();
-    mgr.ensure_initialized(Some(&app_handle), model_size)
-        .await?;
+    mgr.ensure_initialized(Some(&app_handle), model_size).await?;
 
     let analyzer_guard = mgr.get_analyzer()?;
     let analyzer = analyzer_guard
@@ -101,14 +130,12 @@ pub async fn scan_faces(
 
     let total = paths.len();
     let mut processed_photos: Vec<String> = Vec::new();
-    let mut faces_found = 0;
-    let mut face_index = index::read_index()?;
-    let mut index_changed = false;
-    let model_type = if use_large_model {
-        "buffalo_l"
-    } else {
-        "buffalo_s"
-    };
+    let mut total_faces_found: usize = 0;
+    let model_type = if use_large_model { "buffalo_l" } else { "buffalo_s" };
+
+    let mut index = index::read_index()?;
+    index.model_type = model_type.to_string();
+    index.similarity_threshold = similarity_threshold;
 
     for (idx, path) in paths.iter().enumerate() {
         if !is_image_ext(path) {
@@ -130,7 +157,6 @@ pub async fn scan_faces(
         }
 
         let mut face_embeddings = Vec::new();
-
         for (fi, face) in faces.iter().enumerate() {
             if face.embedding.is_empty() {
                 continue;
@@ -148,15 +174,14 @@ pub async fn scan_faces(
         }
 
         if !face_embeddings.is_empty() {
-            let new_faces =
-                index::add_faces_to_index(&mut face_index, path, &face_embeddings, model_type, 0.6);
-            faces_found = add_faces_found(faces_found, new_faces.len());
+            total_faces_found +=
+                index::upsert_faces_in_memory(&mut index, path, &face_embeddings, similarity_threshold);
             processed_photos.push(path.clone());
-            index_changed = true;
         }
 
-        if idx % 50 == 0 {
-            index::auto_cluster_index(&mut face_index);
+        if idx > 0 && idx % CHECKPOINT_EVERY == 0 {
+            index::cluster_index(&mut index);
+            let _ = index::write_index(&index);
         }
 
         let _ = app_handle.emit(
@@ -165,23 +190,21 @@ pub async fn scan_faces(
                 "scanned": idx + 1,
                 "total": total,
                 "photosWithFaces": processed_photos.len(),
-                "facesFound": faces_found,
+                "facesFound": total_faces_found,
                 "currentFile": path,
             }),
         );
     }
 
-    if index_changed {
-        index::auto_cluster_index(&mut face_index);
-        index::write_index(&face_index)?;
-    }
+    index::cluster_index(&mut index);
+    index::write_index(&index)?;
 
     let _ = app_handle.emit(
         "face:complete",
         serde_json::json!({
             "scanned": total,
             "photosWithFaces": processed_photos.len(),
-            "facesFound": faces_found,
+            "facesFound": total_faces_found,
         }),
     );
 
@@ -189,8 +212,11 @@ pub async fn scan_faces(
 }
 
 #[command]
-pub fn cluster_faces(_threshold: f32) -> Result<Vec<serde_json::Value>, String> {
-    let idx = index::read_index()?;
+pub fn cluster_faces(threshold: f32) -> Result<Vec<serde_json::Value>, String> {
+    let mut idx = index::read_index()?;
+    idx.similarity_threshold = threshold;
+    index::cluster_index(&mut idx);
+    index::write_index(&idx)?;
     let mut result = Vec::new();
 
     for person in &idx.people {
@@ -239,7 +265,7 @@ pub fn list_people() -> Result<Vec<serde_json::Value>, String> {
                         .partial_cmp(&b.confidence)
                         .unwrap_or(std::cmp::Ordering::Equal)
                 })
-                .and_then(|best| crop_face_to_data_url(&best.photo_path, &best.bbox).ok());
+                .and_then(|best| cached_face_thumbnail(&best.id, &best.photo_path, &best.bbox));
 
             serde_json::json!({
                 "id": p.id,
@@ -313,6 +339,11 @@ pub fn delete_person(person_id: String) -> Result<(), String> {
 }
 
 #[command]
+pub fn reject_faces(face_ids: Vec<String>) -> Result<(), String> {
+    index::reject_faces(&face_ids)
+}
+
+#[command]
 pub fn get_person_photos(person_id: String) -> Result<Vec<String>, String> {
     let faces = index::get_faces_for_person(&person_id)?;
     let mut paths: Vec<String> = faces.into_iter().map(|f| f.photo_path).collect();
@@ -347,20 +378,4 @@ pub fn get_photo_faces(photo_path: String) -> Result<Vec<serde_json::Value>, Str
         .collect();
 
     Ok(faces)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn accumulates_faces_found_from_each_processed_photo() {
-        let mut faces_found = 0;
-
-        faces_found = add_faces_found(faces_found, 2);
-        faces_found = add_faces_found(faces_found, 0);
-        faces_found = add_faces_found(faces_found, 3);
-
-        assert_eq!(faces_found, 5);
-    }
 }

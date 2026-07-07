@@ -42,6 +42,7 @@ pub fn run() {
             commands::faces::rename_person,
             commands::faces::merge_people,
             commands::faces::delete_person,
+            commands::faces::reject_faces,
             commands::faces::get_person_photos,
             commands::faces::get_photo_faces,
         ])

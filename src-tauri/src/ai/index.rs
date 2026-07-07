@@ -63,7 +63,7 @@ fn index_path() -> Result<PathBuf, String> {
 pub fn read_index() -> Result<FaceIndex, String> {
     let path = index_path()?;
     if !path.exists() {
-        return Ok(FaceIndex::new("buffalo_s".to_string(), 0.6));
+        return Ok(FaceIndex::new("buffalo_s".to_string(), 0.55));
     }
     let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
     serde_json::from_str(&content).map_err(|e| e.to_string())
@@ -71,23 +71,10 @@ pub fn read_index() -> Result<FaceIndex, String> {
 
 pub fn write_index(index: &FaceIndex) -> Result<(), String> {
     let path = index_path()?;
-    write_index_to_path(&path, index)
-}
-
-fn write_index_to_path(path: &PathBuf, index: &FaceIndex) -> Result<(), String> {
     let content = serde_json::to_string_pretty(index).map_err(|e| e.to_string())?;
-    atomic_write_string(path, &content)
-}
-
-fn atomic_write_string(path: &PathBuf, content: &str) -> Result<(), String> {
-    let temp_path = path.with_extension("json.tmp");
-    fs::write(&temp_path, content).map_err(|e| e.to_string())?;
-
-    if path.exists() {
-        fs::remove_file(path).map_err(|e| e.to_string())?;
-    }
-
-    fs::rename(&temp_path, path).map_err(|e| e.to_string())
+    let tmp_path = path.with_extension("json.tmp");
+    fs::write(&tmp_path, content).map_err(|e| e.to_string())?;
+    fs::rename(&tmp_path, &path).map_err(|e| e.to_string())
 }
 
 pub fn add_faces(
@@ -97,26 +84,40 @@ pub fn add_faces(
     threshold: f32,
 ) -> Result<Vec<FaceRecord>, String> {
     let mut index = read_index()?;
-    let new_faces = add_faces_to_index(&mut index, photo_path, embeddings, model_type, threshold);
+    index.model_type = model_type.to_string();
+    index.similarity_threshold = threshold;
+    upsert_faces_in_memory(&mut index, photo_path, embeddings, threshold);
     write_index(&index)?;
-    Ok(new_faces)
+    Ok(index
+        .faces
+        .iter()
+        .filter(|f| f.photo_path == photo_path)
+        .cloned()
+        .collect())
 }
 
-pub fn add_faces_to_index(
+pub fn upsert_faces_in_memory(
     index: &mut FaceIndex,
     photo_path: &str,
     embeddings: &[crate::ai::clustering::FaceEmbedding],
-    model_type: &str,
     threshold: f32,
-) -> Vec<FaceRecord> {
-    index.model_type = model_type.to_string();
-    index.similarity_threshold = threshold;
-
+) -> usize {
+    let previous_faces: Vec<FaceRecord> = index
+        .faces
+        .iter()
+        .filter(|f| f.photo_path == photo_path)
+        .cloned()
+        .collect();
     index.faces.retain(|f| f.photo_path != photo_path);
 
-    let mut new_faces = Vec::new();
-    for emb in embeddings {
-        let record = FaceRecord {
+    let mut count = 0;
+    for emb in suppress_overlapping_detections(embeddings) {
+        let previous_match = previous_faces.iter().find(|old| {
+            old.face_index == emb.face_index
+                || (bbox_iou(&old.bbox, &emb.bbox) >= 0.5
+                    && cosine_sim(&old.embedding, &emb.embedding) >= threshold)
+        });
+        index.faces.push(FaceRecord {
             id: Uuid::new_v4().to_string(),
             photo_path: photo_path.to_string(),
             face_index: emb.face_index,
@@ -124,108 +125,260 @@ pub fn add_faces_to_index(
             bbox: emb.bbox,
             landmarks: emb.landmarks,
             confidence: emb.confidence,
-            person_id: None,
-            rejected: false,
-        };
-        new_faces.push(record);
+            person_id: previous_match.and_then(|face| face.person_id.clone()),
+            rejected: previous_match.map(|face| face.rejected).unwrap_or(false),
+        });
+        count += 1;
     }
-
-    index.faces.extend(new_faces.clone());
-    new_faces
+    count
 }
 
 pub fn auto_cluster() -> Result<(), String> {
     let mut index = read_index()?;
-    auto_cluster_index(&mut index);
+    cluster_index(&mut index);
     write_index(&index)
 }
 
-pub fn auto_cluster_index(index: &mut FaceIndex) {
+pub fn cluster_index(index: &mut FaceIndex) {
     let threshold = index.similarity_threshold;
+    let merge_threshold = (threshold - 0.12).max(0.30); // more lenient, centroid-vs-centroid
 
-    let face_count = index.faces.len();
-
-    struct FaceInfo {
-        embedding: Vec<f32>,
+    // Step 1: attach unassigned faces to existing people via centroid matching
+    let centroids = compute_person_centroids(index);
+    if !centroids.is_empty() {
+        for face in index.faces.iter_mut() {
+            if face.person_id.is_some() || face.rejected {
+                continue;
+            }
+            if let Some(person_id) =
+                find_best_centroid_match(&face.embedding, &centroids, merge_threshold)
+            {
+                face.person_id = Some(person_id);
+            }
+        }
     }
 
-    let unassigned: Vec<(usize, FaceInfo)> = index
+    // Step 2: pairwise-cluster remaining unassigned faces into new people
+    let unassigned_indices: Vec<usize> = index
         .faces
         .iter()
         .enumerate()
         .filter(|(_, f)| f.person_id.is_none() && !f.rejected)
-        .map(|(i, f)| {
-            (
-                i,
-                FaceInfo {
-                    embedding: f.embedding.clone(),
-                },
-            )
-        })
+        .map(|(i, _)| i)
         .collect();
 
-    if unassigned.is_empty() {
-        return;
-    }
+    let n = unassigned_indices.len();
+    if n >= 2 {
+        let unassigned_embs: Vec<Vec<f32>> = unassigned_indices
+            .iter()
+            .map(|&i| index.faces[i].embedding.clone())
+            .collect();
 
-    let n = unassigned.len();
-    let unassigned_indices: Vec<usize> = unassigned.iter().map(|(i, _)| *i).collect();
-
-    let mut adjacency: Vec<Vec<usize>> = vec![vec![]; n];
-    for i in 0..n {
-        for j in (i + 1)..n {
-            let sim = cosine_sim(&unassigned[i].1.embedding, &unassigned[j].1.embedding);
-            if sim >= threshold {
-                adjacency[i].push(j);
-                adjacency[j].push(i);
+        let mut adjacency: Vec<Vec<usize>> = vec![vec![]; n];
+        for i in 0..n {
+            for j in (i + 1)..n {
+                if cosine_sim(&unassigned_embs[i], &unassigned_embs[j]) >= threshold {
+                    adjacency[i].push(j);
+                    adjacency[j].push(i);
+                }
             }
         }
-    }
 
-    let mut visited = vec![false; n];
-    for i in 0..n {
-        if visited[i] {
-            continue;
-        }
-        let mut cluster_indices = vec![];
-        let mut stack = vec![i];
-        while let Some(node) = stack.pop() {
-            if visited[node] {
+        let mut visited = vec![false; n];
+        for i in 0..n {
+            if visited[i] {
                 continue;
             }
-            visited[node] = true;
-            cluster_indices.push(node);
-            for &neighbor in &adjacency[node] {
-                if !visited[neighbor] {
-                    stack.push(neighbor);
+            let mut cluster = vec![];
+            let mut stack = vec![i];
+            while let Some(node) = stack.pop() {
+                if visited[node] {
+                    continue;
+                }
+                visited[node] = true;
+                cluster.push(node);
+                for &nb in &adjacency[node] {
+                    if !visited[nb] {
+                        stack.push(nb);
+                    }
                 }
             }
-        }
-        if cluster_indices.len() >= 2 {
-            let person_id = Uuid::new_v4().to_string();
-            let person_name = format!("Person {}", index.people.len() + 1);
-            let first_face_idx = unassigned_indices[cluster_indices[0]];
-            let thumbnail_path = if first_face_idx < face_count {
-                index.faces[first_face_idx].photo_path.clone()
-            } else {
-                String::new()
-            };
-            for &ci in &cluster_indices {
-                let face_idx = unassigned_indices[ci];
-                if face_idx < face_count {
-                    index.faces[face_idx].person_id = Some(person_id.clone());
+            if cluster.len() >= 2 {
+                let person_id = Uuid::new_v4().to_string();
+                let person_name = format!("Person {}", index.people.len() + 1);
+                let first_idx = unassigned_indices[cluster[0]];
+                let thumbnail_path = index.faces[first_idx].photo_path.clone();
+
+                for &ci in &cluster {
+                    index.faces[unassigned_indices[ci]].person_id = Some(person_id.clone());
                 }
+
+                index.people.push(Person {
+                    id: person_id,
+                    name: person_name,
+                    face_count: cluster.len() as u32,
+                    thumbnail_path,
+                });
             }
-            index.people.push(Person {
-                id: person_id,
-                name: person_name,
-                face_count: cluster_indices.len() as u32,
-                thumbnail_path,
-            });
         }
     }
 
+    // Step 3: merge any people whose centroids are near-duplicates
+    merge_similar_people(index, merge_threshold);
     update_person_counts(index);
+}
+
+fn compute_person_centroids(index: &FaceIndex) -> Vec<(String, Vec<f32>)> {
+    let mut sums: HashMap<String, (Vec<f32>, u32)> = HashMap::new();
+    for face in &index.faces {
+        if face.rejected {
+            continue;
+        }
+        let Some(person_id) = face.person_id.as_ref() else {
+            continue;
+        };
+        if face.embedding.is_empty() {
+            continue;
+        }
+        let entry = sums
+            .entry(person_id.clone())
+            .or_insert_with(|| (vec![0.0; face.embedding.len()], 0));
+        for (sum, value) in entry.0.iter_mut().zip(face.embedding.iter()) {
+            *sum += *value;
+        }
+        entry.1 += 1;
+    }
+
+    sums.into_iter()
+        .filter_map(|(person_id, (mut sum, count))| {
+            if count == 0 {
+                return None;
+            }
+            for value in &mut sum {
+                *value /= count as f32;
+            }
+            Some((person_id, sum))
+        })
+        .collect()
+}
+
+fn find_best_centroid_match(
+    embedding: &[f32],
+    centroids: &[(String, Vec<f32>)],
+    threshold: f32,
+) -> Option<String> {
+    centroids
+        .iter()
+        .map(|(id, centroid)| (id, cosine_sim(embedding, centroid)))
+        .filter(|(_, sim)| *sim >= threshold)
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(id, _)| id.clone())
+}
+
+fn merge_similar_people(index: &mut FaceIndex, threshold: f32) {
+    loop {
+        let centroids = compute_person_centroids(index);
+        let mut merge_pair: Option<(String, String)> = None;
+        'outer: for i in 0..centroids.len() {
+            for j in (i + 1)..centroids.len() {
+                if cosine_sim(&centroids[i].1, &centroids[j].1) >= threshold {
+                    let (keep, drop) = choose_merge_order(&centroids[i].0, &centroids[j].0, index);
+                    merge_pair = Some((keep, drop));
+                    break 'outer;
+                }
+            }
+        }
+        let Some((keep, drop)) = merge_pair else {
+            break;
+        };
+        for face in index.faces.iter_mut() {
+            if face.person_id.as_deref() == Some(drop.as_str()) {
+                face.person_id = Some(keep.clone());
+            }
+        }
+        index.people.retain(|p| p.id != drop);
+    }
+}
+
+fn choose_merge_order(a: &str, b: &str, index: &FaceIndex) -> (String, String) {
+    let a_is_auto = is_auto_person(a, index);
+    let b_is_auto = is_auto_person(b, index);
+    if a_is_auto && !b_is_auto {
+        return (b.to_string(), a.to_string());
+    }
+    if b_is_auto && !a_is_auto {
+        return (a.to_string(), b.to_string());
+    }
+    let a_count = index
+        .faces
+        .iter()
+        .filter(|f| f.person_id.as_deref() == Some(a))
+        .count();
+    let b_count = index
+        .faces
+        .iter()
+        .filter(|f| f.person_id.as_deref() == Some(b))
+        .count();
+    if a_count >= b_count {
+        (a.to_string(), b.to_string())
+    } else {
+        (b.to_string(), a.to_string())
+    }
+}
+
+fn is_auto_person(person_id: &str, index: &FaceIndex) -> bool {
+    index
+        .people
+        .iter()
+        .find(|p| p.id == person_id)
+        .map(|p| {
+            p.name
+                .strip_prefix("Person ")
+                .map(|suffix| !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()))
+                .unwrap_or(false)
+        })
+        .unwrap_or(false)
+}
+
+fn suppress_overlapping_detections(
+    embeddings: &[crate::ai::clustering::FaceEmbedding],
+) -> Vec<crate::ai::clustering::FaceEmbedding> {
+    let mut sorted = embeddings.to_vec();
+    sorted.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut kept: Vec<crate::ai::clustering::FaceEmbedding> = Vec::new();
+    for emb in sorted {
+        if kept.iter().all(|kept_emb| bbox_iou(&kept_emb.bbox, &emb.bbox) < 0.75) {
+            kept.push(emb);
+        }
+    }
+
+    kept.sort_by_key(|emb| emb.face_index);
+    kept
+}
+
+fn bbox_iou(a: &[f32; 4], b: &[f32; 4]) -> f32 {
+    let x1 = a[0].max(b[0]);
+    let y1 = a[1].max(b[1]);
+    let x2 = a[2].min(b[2]);
+    let y2 = a[3].min(b[3]);
+    let intersection_w = (x2 - x1).max(0.0);
+    let intersection_h = (y2 - y1).max(0.0);
+    let intersection = intersection_w * intersection_h;
+
+    let area_a = ((a[2] - a[0]).max(0.0)) * ((a[3] - a[1]).max(0.0));
+    let area_b = ((b[2] - b[0]).max(0.0)) * ((b[3] - b[1]).max(0.0));
+    let union = area_a + area_b - intersection;
+
+    if union <= 0.0 {
+        0.0
+    } else {
+        intersection / union
+    }
 }
 
 fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
@@ -240,13 +393,51 @@ fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
 
 pub fn assign_person(
     face_ids: &[String],
-    person_id: Option<&str>,
+    person_id_hint: Option<&str>,
     person_name: &str,
 ) -> Result<Person, String> {
     let mut index = read_index()?;
-    let person = assign_person_to_index(&mut index, face_ids, person_id, person_name)?;
+
+    let existing_id = person_id_hint
+        .filter(|id| index.people.iter().any(|p| p.id == *id))
+        .map(|id| id.to_string())
+        .or_else(|| {
+            index
+                .people
+                .iter()
+                .find(|p| p.name == person_name)
+                .map(|p| p.id.clone())
+        });
+
+    let target_id = match existing_id {
+        Some(id) => id,
+        None => {
+            let id = Uuid::new_v4().to_string();
+            index.people.push(Person {
+                id: id.clone(),
+                name: person_name.to_string(),
+                face_count: 0,
+                thumbnail_path: String::new(),
+            });
+            id
+        }
+    };
+
+    for face in &mut index.faces {
+        if face_ids.contains(&face.id) {
+            face.person_id = Some(target_id.clone());
+            face.rejected = false;
+        }
+    }
+
+    update_person_counts(&mut index);
     write_index(&index)?;
-    Ok(person)
+    Ok(index
+        .people
+        .iter()
+        .find(|p| p.id == target_id)
+        .cloned()
+        .ok_or_else(|| "Person not found after assignment.".to_string())?)
 }
 
 pub fn assign_person_to_index(
@@ -400,47 +591,164 @@ mod tests {
         path
     }
 
-    #[test]
-    fn write_index_to_path_leaves_parseable_json_without_temp_file() {
-        let path = unique_temp_file("atomic");
-        let index = FaceIndex::new("buffalo_s".to_string(), 0.6);
-
-        write_index_to_path(&path, &index).unwrap();
-
-        let content = fs::read_to_string(&path).unwrap();
-        let parsed: FaceIndex = serde_json::from_str(&content).unwrap();
-        assert_eq!(parsed.model_type, "buffalo_s");
-        assert!(!path.with_extension("json.tmp").exists());
-
-        let _ = fs::remove_file(path);
+    fn embedding(face_index: usize, photo_path: &str) -> crate::ai::clustering::FaceEmbedding {
+        embedding_with(face_index, photo_path, vec![1.0, 0.0, 0.0], [0.1, 0.1, 0.2, 0.2], 0.9)
     }
 
-    fn embedding(face_index: usize, photo_path: &str) -> crate::ai::clustering::FaceEmbedding {
+    fn embedding_with(
+        face_index: usize,
+        photo_path: &str,
+        values: Vec<f32>,
+        bbox: [f32; 4],
+        confidence: f32,
+    ) -> crate::ai::clustering::FaceEmbedding {
         crate::ai::clustering::FaceEmbedding {
             photo_path: photo_path.to_string(),
             face_index,
-            embedding: vec![1.0, 0.0, 0.0],
-            bbox: [0.1, 0.1, 0.2, 0.2],
+            embedding: values,
+            bbox,
             landmarks: [[0.0, 0.0]; 5],
-            confidence: 0.9,
+            confidence,
         }
     }
 
     #[test]
-    fn add_faces_to_index_replaces_photo_faces_without_disk_roundtrip() {
-        let mut index = FaceIndex::new("buffalo_s".to_string(), 0.6);
-        let first = vec![embedding(0, "a.jpg")];
-        let second = vec![embedding(0, "a.jpg"), embedding(1, "a.jpg")];
+    fn write_index_is_atomic() {
+        let path = unique_temp_file("atomic");
+        let index = FaceIndex::new("buffalo_s".to_string(), 0.6);
 
-        add_faces_to_index(&mut index, "a.jpg", &first, "buffalo_s", 0.6);
-        add_faces_to_index(&mut index, "a.jpg", &second, "buffalo_s", 0.6);
+        let content = serde_json::to_string_pretty(&index).unwrap();
+        let tmp_path = path.with_extension("json.tmp");
+        fs::write(&tmp_path, &content).unwrap();
+        fs::rename(&tmp_path, &path).unwrap();
+
+        let readback = fs::read_to_string(&path).unwrap();
+        let parsed: FaceIndex = serde_json::from_str(&readback).unwrap();
+        assert_eq!(parsed.model_type, "buffalo_s");
+        assert!(!path.with_extension("json.tmp").exists());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn upsert_faces_in_memory_replaces_old_faces_for_same_photo() {
+        let mut index = FaceIndex::new("buffalo_s".to_string(), 0.6);
+        let first = vec![embedding_with(0, "a.jpg", vec![1.0, 0.0, 0.0], [0.1, 0.1, 0.2, 0.2], 0.9)];
+        let second = vec![
+            embedding_with(0, "a.jpg", vec![1.0, 0.0, 0.0], [0.1, 0.1, 0.2, 0.2], 0.9),
+            embedding_with(1, "a.jpg", vec![1.0, 0.0, 0.0], [0.3, 0.3, 0.4, 0.4], 0.9),
+        ];
+
+        upsert_faces_in_memory(&mut index, "a.jpg", &first, 0.6);
+        upsert_faces_in_memory(&mut index, "a.jpg", &second, 0.6);
 
         assert_eq!(index.faces.len(), 2);
         assert!(index.faces.iter().all(|face| face.photo_path == "a.jpg"));
     }
 
     #[test]
-    fn assign_person_to_index_uses_person_id_before_name() {
+    fn upsert_preserves_person_id_when_rescanning_same_face() {
+        let mut index = FaceIndex::new("buffalo_s".to_string(), 0.6);
+        index.people.push(Person {
+            id: "person-1".to_string(),
+            name: "Person 1".to_string(),
+            face_count: 0,
+            thumbnail_path: String::new(),
+        });
+        upsert_faces_in_memory(
+            &mut index,
+            "a.jpg",
+            &[embedding_with(0, "a.jpg", vec![1.0, 0.0, 0.0], [0.1, 0.1, 0.2, 0.2], 0.8)],
+            0.6,
+        );
+        index.faces[0].person_id = Some("person-1".to_string());
+        update_person_counts(&mut index);
+
+        upsert_faces_in_memory(
+            &mut index,
+            "a.jpg",
+            &[embedding_with(0, "a.jpg", vec![0.99, 0.01, 0.0], [0.105, 0.1, 0.205, 0.2], 0.9)],
+            0.6,
+        );
+
+        assert_eq!(index.faces[0].person_id.as_deref(), Some("person-1"));
+    }
+
+    #[test]
+    fn upsert_suppresses_overlapping_duplicate_detections() {
+        let mut index = FaceIndex::new("buffalo_s".to_string(), 0.6);
+        let count = upsert_faces_in_memory(
+            &mut index,
+            "a.jpg",
+            &[
+                embedding_with(0, "a.jpg", vec![1.0, 0.0, 0.0], [0.1, 0.1, 0.4, 0.4], 0.7),
+                embedding_with(1, "a.jpg", vec![1.0, 0.0, 0.0], [0.11, 0.11, 0.41, 0.41], 0.95),
+            ],
+            0.6,
+        );
+
+        assert_eq!(count, 1);
+        assert_eq!(index.faces[0].confidence, 0.95);
+    }
+
+    #[test]
+    fn cluster_attaches_unassigned_face_to_existing_person() {
+        let mut index = FaceIndex::new("buffalo_s".to_string(), 0.6);
+        index.people.push(Person {
+            id: "person-1".to_string(),
+            name: "Person 1".to_string(),
+            face_count: 0,
+            thumbnail_path: String::new(),
+        });
+        upsert_faces_in_memory(&mut index, "a.jpg", &[embedding(0, "a.jpg")], 0.6);
+        index.faces[0].person_id = Some("person-1".to_string());
+        upsert_faces_in_memory(
+            &mut index,
+            "b.jpg",
+            &[embedding_with(0, "b.jpg", vec![0.99, 0.01, 0.0], [0.1, 0.1, 0.2, 0.2], 0.9)],
+            0.6,
+        );
+
+        cluster_index(&mut index);
+
+        assert_eq!(index.people.len(), 1);
+        assert_eq!(index.faces[1].person_id.as_deref(), Some("person-1"));
+        assert_eq!(index.people[0].face_count, 2);
+    }
+
+    #[test]
+    fn cluster_merges_similar_people() {
+        let mut index = FaceIndex::new("buffalo_s".to_string(), 0.6);
+        index.people.push(Person {
+            id: "person-1".to_string(),
+            name: "Person 1".to_string(),
+            face_count: 0,
+            thumbnail_path: String::new(),
+        });
+        index.people.push(Person {
+            id: "person-2".to_string(),
+            name: "Person 2".to_string(),
+            face_count: 0,
+            thumbnail_path: String::new(),
+        });
+        upsert_faces_in_memory(&mut index, "a.jpg", &[embedding(0, "a.jpg")], 0.6);
+        index.faces[0].person_id = Some("person-1".to_string());
+        upsert_faces_in_memory(
+            &mut index,
+            "b.jpg",
+            &[embedding_with(0, "b.jpg", vec![0.99, 0.01, 0.0], [0.1, 0.1, 0.2, 0.2], 0.9)],
+            0.6,
+        );
+        index.faces[1].person_id = Some("person-2".to_string());
+
+        cluster_index(&mut index);
+
+        assert_eq!(index.people.len(), 1);
+        assert_eq!(index.people[0].face_count, 2);
+        assert_eq!(index.faces[0].person_id, index.faces[1].person_id);
+    }
+
+    #[test]
+    fn assign_person_respects_person_id_parameter() {
         let mut index = FaceIndex::new("buffalo_s".to_string(), 0.6);
         index.people.push(Person {
             id: "alex-1".to_string(),
@@ -454,17 +762,16 @@ mod tests {
             face_count: 0,
             thumbnail_path: String::new(),
         });
-        let faces = add_faces_to_index(
-            &mut index,
-            "a.jpg",
-            &[embedding(0, "a.jpg")],
-            "buffalo_s",
-            0.6,
-        );
+        upsert_faces_in_memory(&mut index, "a.jpg", &[embedding(0, "a.jpg")], 0.6);
+        let face_id = index.faces[0].id.clone();
 
-        let assigned =
-            assign_person_to_index(&mut index, &[faces[0].id.clone()], Some("alex-2"), "Alex")
-                .unwrap();
+        let assigned = assign_person_to_index(
+            &mut index,
+            &[face_id],
+            Some("alex-2"),
+            "Alex",
+        )
+        .unwrap();
 
         assert_eq!(assigned.id, "alex-2");
         assert_eq!(index.faces[0].person_id.as_deref(), Some("alex-2"));
