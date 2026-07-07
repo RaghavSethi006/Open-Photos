@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
   ArrowLeft,
@@ -9,8 +9,6 @@ import {
   ImageOff,
   Play,
   X,
-  ChevronLeft,
-  ChevronRight,
   AlertCircle,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -18,6 +16,7 @@ import { isTauriRuntime, listPhotos } from '../lib/tauri';
 import { useAlbumsStore } from '../store/useAlbumsStore';
 import { useStore } from '../store/useStore';
 import { useToastStore } from '../store/useToastStore';
+import { Lightbox } from './Lightbox';
 
 const ZERO_GAP = 0;
 const TARGET_ROW_HEIGHT = 240;
@@ -47,67 +46,6 @@ function justifyRow(photos: AlbumPhoto[], containerWidth: number, targetHeight: 
     width: Math.floor((p.width / p.height) * rowHeight),
     height: Math.floor(rowHeight),
   }));
-}
-
-function Lightbox({ photos, index, onClose, onPrev, onNext }: {
-  photos: AlbumPhoto[];
-  index: number;
-  onClose: () => void;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  const photo = photos[index];
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-      if (e.key === 'ArrowLeft') onPrev();
-      if (e.key === 'ArrowRight') onNext();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, onPrev, onNext]);
-
-  if (!photo || photo.missing) return null;
-
-  return (
-    <motion.div
-      key="lightbox"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.18 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/92 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <button onClick={onClose} className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
-        <X size={20} />
-      </button>
-      <div className="absolute bottom-0 left-0 right-0 z-10 px-6 py-4 bg-gradient-to-t from-black/70 to-transparent">
-        <p className="text-white font-medium text-sm truncate">{photo.name}</p>
-      </div>
-      {index > 0 && (
-        <button onClick={(e) => { e.stopPropagation(); onPrev(); }} className="absolute left-4 z-10 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
-          <ChevronLeft size={24} />
-        </button>
-      )}
-      {index < photos.length - 1 && (
-        <button onClick={(e) => { e.stopPropagation(); onNext(); }} className="absolute right-4 z-10 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
-          <ChevronRight size={24} />
-        </button>
-      )}
-      <div onClick={(e) => e.stopPropagation()} className="max-w-[90vw] max-h-[85vh]">
-        {photo.isVideo ? (
-          <video src={photo.src} controls autoPlay className="max-w-[90vw] max-h-[85vh] rounded-lg" style={{ objectFit: 'contain' }} />
-        ) : (
-          <img src={photo.src} alt={photo.name} className="max-w-[90vw] max-h-[85vh] rounded-lg object-contain select-none" draggable={false} />
-        )}
-      </div>
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white/70 text-xs px-3 py-1.5 rounded-full">
-        {index + 1} / {photos.length}
-      </div>
-    </motion.div>
-  );
 }
 
 export function AlbumDetailPage() {

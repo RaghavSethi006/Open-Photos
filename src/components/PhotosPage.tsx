@@ -5,16 +5,11 @@ import {
   FolderOpen,
   Folder,
   X,
-  ChevronLeft,
-  ChevronRight,
   ImageOff,
   Loader2,
   Bookmark,
   CheckSquare,
   Image,
-  Info,
-  Play,
-  Pause,
   Trash2,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -27,7 +22,8 @@ import { useToastStore } from '../store/useToastStore';
 import { PhotoTile, type LayoutPhoto } from './PhotoTile';
 import { CreateAlbumDialog } from './CreateAlbumDialog';
 import { AddToAlbumDialog } from './AddToAlbumDialog';
-import { PhotoInfoPanel } from './PhotoInfoPanel';
+
+import { Lightbox } from './Lightbox';
 
 const TARGET_ROW_HEIGHT = 240;
 const GRID_GAP = 4;
@@ -59,209 +55,10 @@ function dateKey(ms: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function guessAspect(name: string): number {
   const e = name.split('.').pop()?.toLowerCase() ?? '';
   if (['mp4', 'mov', 'mkv', 'avi', 'wmv', 'flv', 'm4v', 'webm'].includes(e)) return 16 / 9;
   return 4 / 3;
-}
-
-function Lightbox({
-  photos,
-  index,
-  onClose,
-  onPrev,
-  onNext,
-}: {
-  photos: LayoutPhoto[];
-  index: number;
-  onClose: () => void;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  const photo = photos[index];
-  const [showInfo, setShowInfo] = useState(false);
-
-  // Zoom & Pan
-  const [scale, setScale] = useState(1);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [dragging, setDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-
-  // Slideshow
-  const [slideshow, setSlideshow] = useState(false);
-  const slideshowRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    setShowInfo(false);
-    setScale(1);
-    setPosition({ x: 0, y: 0 });
-  }, [index]);
-
-  // Slideshow auto-advance
-  useEffect(() => {
-    if (!slideshow) {
-      if (slideshowRef.current) { clearInterval(slideshowRef.current); slideshowRef.current = null; }
-      return;
-    }
-    slideshowRef.current = window.setInterval(() => {
-      if (index < photos.length - 1) {
-        onNext();
-      } else {
-        setSlideshow(false);
-      }
-    }, 3000);
-    return () => { if (slideshowRef.current) { clearInterval(slideshowRef.current); slideshowRef.current = null; } };
-  }, [slideshow, index, photos.length, onNext]);
-
-  // Keyboard
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-      if (e.key === 'ArrowLeft') onPrev();
-      if (e.key === 'ArrowRight') onNext();
-      if (e.key === ' ' || e.key === 'Space') { e.preventDefault(); setSlideshow((s) => !s); }
-      if (e.key === 'i') setShowInfo((s) => !s);
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, onPrev, onNext]);
-
-  const handleWheel = (e: React.WheelEvent) => {
-    e.stopPropagation();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setScale((s) => Math.max(0.5, Math.min(5, s + delta)));
-  };
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (scale <= 1) return;
-    e.preventDefault();
-    setDragging(true);
-    setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!dragging) return;
-    const dx = e.clientX - dragStart.x;
-    const dy = e.clientY - dragStart.y;
-    setPosition({ x: dx, y: dy });
-  };
-
-  const handleMouseUp = () => {
-    setDragging(false);
-  };
-
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (scale > 1) {
-      setScale(1);
-      setPosition({ x: 0, y: 0 });
-    } else {
-      setScale(2.5);
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = (rect.width / 2 - e.clientX) * 0.5;
-      const y = (rect.height / 2 - e.clientY) * 0.5;
-      setPosition({ x, y });
-    }
-  };
-
-  if (!photo) return null;
-
-  const isImage = !photo.isVideo;
-
-  return (
-    <motion.div
-      key="lightbox"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.18 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/92 backdrop-blur-sm"
-      onClick={onClose}
-      onMouseUp={handleMouseUp}
-      onMouseMove={handleMouseMove}
-    >
-      {/* Top actions */}
-      <button onClick={(e) => { e.stopPropagation(); setSlideshow(!slideshow); }}
-        className={`absolute top-4 left-4 z-30 p-2 rounded-full transition-colors ${
-          slideshow ? 'bg-[var(--color-primary)] text-white' : 'bg-white/10 hover:bg-white/20 text-white'
-        }`} title={slideshow ? 'Stop slideshow' : 'Start slideshow'}>
-        {slideshow ? <Pause size={18} /> : <Play size={18} />}
-      </button>
-      <button onClick={onClose} className={`absolute z-30 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors ${
-        showInfo ? 'top-4 left-4' : 'top-4 right-4'
-      }`}>
-        <X size={20} />
-      </button>
-      <button onClick={(e) => { e.stopPropagation(); setShowInfo(!showInfo); }}
-        className={`absolute top-4 z-30 p-2 rounded-full transition-colors ${
-          showInfo
-            ? 'right-4 bg-red-400/20 text-red-300 hover:bg-red-400/30'
-            : 'right-16 bg-white/10 hover:bg-white/20 text-white'
-        }`} title="Photo info (I)">
-        <Info size={18} />
-      </button>
-
-      {/* Bottom bar */}
-      <div className="absolute bottom-0 left-0 right-0 z-30 px-6 py-4 bg-gradient-to-t from-black/70 to-transparent" style={{ pointerEvents: 'none' }}>
-        <p className="text-white font-medium text-sm truncate">{photo.name}</p>
-        <p className="text-white/50 text-xs mt-0.5">
-          {formatFileSize(photo.sizeBytes)} · {new Date(photo.modifiedMs).toLocaleString()}
-          {scale !== 1 && <span className="ml-2">· {Math.round(scale * 100)}%</span>}
-        </p>
-      </div>
-
-      {/* Nav */}
-      {index > 0 && (
-        <button onClick={(e) => { e.stopPropagation(); onPrev(); }} className="absolute left-4 z-30 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
-          <ChevronLeft size={24} />
-        </button>
-      )}
-      {index < photos.length - 1 && (
-        <button onClick={(e) => { e.stopPropagation(); onNext(); }} className="absolute right-4 z-30 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
-          <ChevronRight size={24} />
-        </button>
-      )}
-
-      {/* Image/Video with zoom & pan */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onDoubleClick={handleDoubleClick}
-        className="max-w-[90vw] max-h-[85vh] overflow-hidden select-none"
-        style={{ cursor: scale > 1 ? (dragging ? 'grabbing' : 'grab') : 'default' }}
-      >
-        {isImage ? (
-          <img
-            src={photo.src} alt={photo.name}
-            className="rounded-lg object-contain transition-transform duration-100"
-            style={{
-              transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
-              maxWidth: '100%',
-              maxHeight: '85vh',
-            }}
-            draggable={false}
-          />
-        ) : (
-          <video src={photo.src} controls autoPlay className="max-w-[90vw] max-h-[85vh] rounded-lg" style={{ objectFit: 'contain' }} />
-        )}
-      </div>
-
-      {/* Counter */}
-      <div className="absolute bottom-[3.5rem] left-1/2 -translate-x-1/2 bg-black/50 text-white/70 text-xs px-3 py-1.5 rounded-full">
-        {index + 1} / {photos.length}
-        {slideshow && <span className="ml-2 text-[var(--color-primary)]">●</span>}
-      </div>
-
-      <PhotoInfoPanel path={photo.path} open={showInfo} onClose={() => setShowInfo(false)} />
-    </motion.div>
-  );
 }
 
 export function PhotosPage() {
