@@ -3,6 +3,7 @@ import {
   Trash2,
   RotateCcw,
   AlertCircle,
+  Check,
   CheckCircle,
   File,
   Trash as TrashIcon,
@@ -14,6 +15,14 @@ import {
   TrashEntry,
 } from '../lib/tauri';
 import { useSettingsStore } from '../store/useSettingsStore';
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
 
 export function TrashPage() {
   const { trashFolder, trashRetentionDays } = useSettingsStore();
@@ -102,14 +111,6 @@ export function TrashPage() {
     } finally {
       setCleaning(false);
     }
-  };
-
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   const totalSize = entries.reduce((sum, e) => sum + e.size, 0);
@@ -247,7 +248,7 @@ export function TrashPage() {
                         : 'border-white/20 bg-black/30'
                     }`}
                   >
-                    {isSelected && <CheckCircle size={12} className="text-white" />}
+                    {isSelected && <Check size={12} strokeWidth={3} className="text-white" />}
                   </div>
 
                   <div className="rounded-lg bg-black/30 border border-white/5 p-2 shrink-0">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -28,6 +28,14 @@ const DEFAULT_EXTENSIONS = [
   '.jpg', '.jpeg', '.png', '.heic', '.webp', '.tiff', '.bmp',
   '.gif', '.avif', '.mp4', '.mov', '.mkv', '.avi', '.wmv', '.flv', '.m4v', '.webm',
 ];
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
 
 export function DuplicatesPage() {
   const { trashFolder } = useSettingsStore();
@@ -65,16 +73,15 @@ export function DuplicatesPage() {
   }, [showPathDropdown]);
 
   // Listen to scan progress events
+  const unlistenProgRef = useRef<(() => void) | undefined>(undefined);
+  const unlistenCompRef = useRef<(() => void) | undefined>(undefined);
   useEffect(() => {
-    let unlistenProg: (() => void) | undefined;
-    let unlistenComp: (() => void) | undefined;
-
     const setupListeners = async () => {
       try {
-        unlistenProg = await listen<DuplicateScanProgress>('duplicate:progress', (event) => {
+        unlistenProgRef.current = await listen<DuplicateScanProgress>('duplicate:progress', (event) => {
           setScanProgress(event.payload);
         });
-        unlistenComp = await listen<DuplicateScanProgress>('duplicate:complete', (event) => {
+        unlistenCompRef.current = await listen<DuplicateScanProgress>('duplicate:complete', (event) => {
           setScanProgress(event.payload);
         });
       } catch (err) {
@@ -85,8 +92,8 @@ export function DuplicatesPage() {
     setupListeners();
 
     return () => {
-      if (unlistenProg) unlistenProg();
-      if (unlistenComp) unlistenComp();
+      unlistenProgRef.current?.();
+      unlistenCompRef.current?.();
     };
   }, []);
 
@@ -206,14 +213,6 @@ export function DuplicatesPage() {
     setDuplicateSets(null);
     setResolveResult(null);
     setError(null);
-  };
-
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   const metrics = useMemo(() => {

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, UserPlus, Loader2, ChevronRight, User,
@@ -50,12 +50,15 @@ export function PeoplePage() {
     }
   }, []);
 
+  const modelSizeRef = useRef(settings.faceModelSize);
+  modelSizeRef.current = settings.faceModelSize;
+
   const initModels = useCallback(async () => {
     if (!isTauriRuntime()) return;
     setModelsLoading(true);
     setModelError(null);
     try {
-      await checkFaceModels(settings.faceModelSize === 'large' ? 'large' : 'small');
+      await checkFaceModels(modelSizeRef.current === 'large' ? 'large' : 'small');
       setModelsReady(true);
       setModelError(null);
     } catch (err) {
@@ -65,7 +68,7 @@ export function PeoplePage() {
     } finally {
       setModelsLoading(false);
     }
-  }, [addToast, settings.faceModelSize]);
+  }, [addToast]);
 
   useEffect(() => {
     initModels();
