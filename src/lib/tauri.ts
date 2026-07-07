@@ -308,6 +308,12 @@ export async function listFavorites(): Promise<string[]> {
   return invoke('list_favorites');
 }
 
+// ─── File Operations ────────────────────────────────────────────────────────────
+
+export async function moveFile(source: string, destDir: string): Promise<string> {
+  return invoke('move_file', { source, destDir });
+}
+
 // ─── Face AI ──────────────────────────────────────────────────────────────────
 
 export interface FaceProgress {
