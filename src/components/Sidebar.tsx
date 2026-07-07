@@ -47,7 +47,7 @@ export function Sidebar() {
             >
               {isActive && (
                 <motion.div
-                  layoutId="sidebar-active"
+                  layoutId="sidebar-active-nav"
                   className="absolute inset-0 bg-white/10 rounded-xl"
                   initial={false}
                   transition={{ type: 'spring', stiffness: 400, damping: 30 }}
@@ -95,7 +95,7 @@ export function Sidebar() {
             >
               {isActive && (
                 <motion.div
-                  layoutId="sidebar-active"
+                  layoutId="sidebar-active-tools"
                   className="absolute inset-0 bg-white/10 rounded-xl"
                   initial={false}
                   transition={{ type: 'spring', stiffness: 400, damping: 30 }}
@@ -128,7 +128,7 @@ export function Sidebar() {
         >
           {currentView === 'settings' && (
             <motion.div
-              layoutId="sidebar-active"
+              layoutId="sidebar-active-settings"
               className="absolute inset-0 bg-white/10 rounded-xl"
               initial={false}
               transition={{ type: 'spring', stiffness: 400, damping: 30 }}

@@ -73,11 +73,13 @@ export function MapPage() {
   // Scan GPS for all photos
   useEffect(() => {
     if (allEntries.length === 0) return;
+    let cancelled = false;
     setScanningGps(true);
     const geo: GeoPhoto[] = [];
     let done = 0;
     const batch = async () => {
       for (const entry of allEntries) {
+        if (cancelled) return;
         try {
           const meta = await getPhotoMetadata(entry.path);
           if (meta.gpsLat && meta.gpsLng) {
@@ -93,12 +95,15 @@ export function MapPage() {
           }
         } catch { /* skip */ }
         done++;
-        if (done % 20 === 0) setGeoPhotos([...geo]);
+        if (done % 20 === 0 && !cancelled) setGeoPhotos([...geo]);
       }
-      setGeoPhotos(geo);
-      setScanningGps(false);
+      if (!cancelled) {
+        setGeoPhotos(geo);
+        setScanningGps(false);
+      }
     };
     batch();
+    return () => { cancelled = true; };
   }, [allEntries]);
 
   // Initialize map

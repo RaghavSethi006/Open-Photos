@@ -20,8 +20,13 @@ export function PhotoInfoPanel({ path, open, onClose }: Props) {
 
   useEffect(() => {
     if (!open || !path) return;
+    let cancelled = false;
     setLoading(true);
-    getPhotoMetadata(path).then(setMetadata).catch(() => setMetadata(null)).finally(() => setLoading(false));
+    getPhotoMetadata(path)
+      .then((m) => { if (!cancelled) setMetadata(m); })
+      .catch(() => { if (!cancelled) setMetadata(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [path, open]);
 
   const rows: { icon: React.ReactNode; label: string; value: string }[] = [];
@@ -89,7 +94,7 @@ export function PhotoInfoPanel({ path, open, onClose }: Props) {
           </div>
 
           <div className="px-4 py-3">
-            <p className="text-xs font-mono text-[var(--color-text-muted)] break-all truncate mb-3" title={path}>
+            <p className="text-xs font-mono text-[var(--color-text-muted)] truncate mb-3" title={path}>
               {path}
             </p>
 
