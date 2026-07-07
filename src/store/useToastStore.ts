@@ -5,6 +5,7 @@ export interface Toast {
   type: 'success' | 'error' | 'info';
   message: string;
   action?: { label: string; onClick: () => void };
+  _timerId?: number;
 }
 
 interface ToastState {
@@ -15,16 +16,23 @@ interface ToastState {
 
 let counter = 0;
 
-export const useToastStore = create<ToastState>((set) => ({
+export const useToastStore = create<ToastState>((set, get) => ({
   toasts: [],
   addToast: (toast) => {
     const id = `toast-${++counter}`;
     set((state) => ({ toasts: [...state.toasts, { ...toast, id }] }));
-    setTimeout(() => {
+    const timerId = window.setTimeout(() => {
+      const current = get().toasts.find((t) => t.id === id);
+      if (!current) return;
       set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
     }, 4000);
+    set((state) => ({
+      toasts: state.toasts.map((t) => (t.id === id ? { ...t, _timerId: timerId } : t)),
+    }));
   },
   removeToast: (id) => {
+    const current = get().toasts.find((t) => t.id === id);
+    if (current?._timerId) window.clearTimeout(current._timerId);
     set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
   },
 }));

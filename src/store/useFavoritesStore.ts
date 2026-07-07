@@ -32,16 +32,20 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
 
   toggle: async (path: string) => {
     const { paths } = get();
-    if (paths.has(path)) {
-      await removeFavoriteApi(path);
-      const next = new Set(paths);
-      next.delete(path);
-      set({ paths: next });
-    } else {
-      await addFavoriteApi(path);
-      const next = new Set(paths);
-      next.add(path);
-      set({ paths: next });
+    try {
+      if (paths.has(path)) {
+        await removeFavoriteApi(path);
+        const next = new Set(paths);
+        next.delete(path);
+        set({ paths: next });
+      } else {
+        await addFavoriteApi(path);
+        const next = new Set(paths);
+        next.add(path);
+        set({ paths: next });
+      }
+    } catch {
+      console.error('Failed to toggle favorite:', path);
     }
   },
 
