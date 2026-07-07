@@ -18,6 +18,11 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { isTauriRuntime, listPhotos } from '../lib/tauri';
 
+function formatDate(ms: number): string {
+  const d = new Date(ms);
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 interface TempAlbum {
   path: string;
   name: string;
@@ -38,7 +43,7 @@ export function AlbumsPage() {
 
   useEffect(() => {
     loadAlbums();
-  }, []);
+  }, [loadAlbums]);
 
   // Load subfolders from default folder as temp albums
   const loadTempAlbums = useCallback(async () => {
@@ -94,11 +99,6 @@ export function AlbumsPage() {
   const handleDelete = async (id: string) => {
     await deleteAlbum(id);
     setDeletingId(null);
-  };
-
-  const formatDate = (ms: number) => {
-    const d = new Date(ms);
-    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
   return (
