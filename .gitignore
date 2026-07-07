@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Repo utility files
+repo_dump.md
+repo_scanner.py
