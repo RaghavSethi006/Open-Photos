@@ -32,6 +32,8 @@ interface SettingsState {
   trashRetentionDays: number;
   confirmBeforeDelete: boolean;
   skipHiddenFiles: boolean;
+  faceModelSize: 'small' | 'large';
+  faceSimilarityThreshold: number;
   updateSetting: <K extends keyof SettingsState>(key: K, value: SettingsState[K]) => void;
   resetDefaults: () => void;
 }
@@ -49,6 +51,8 @@ const DEFAULTS: Omit<SettingsState, 'updateSetting' | 'resetDefaults'> = {
   trashRetentionDays: 30,
   confirmBeforeDelete: true,
   skipHiddenFiles: true,
+  faceModelSize: 'small',
+  faceSimilarityThreshold: 0.55,
 };
 
 export const useSettingsStore = create<SettingsState>()(
