@@ -51,7 +51,7 @@ export function FavoritesPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1000);
 
-  useEffect(() => { loadFavorites(); }, []);
+  useEffect(() => { loadFavorites(); }, [loadFavorites]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -122,7 +122,13 @@ export function FavoritesPage() {
     return groupByDate(layout);
   }, [favoriteEntries]);
 
-  const allPhotosFlat: LayoutPhoto[] = groups.flatMap((g) => g.photos);
+  // Build a stable path -> flat index map (indexOf breaks on freshly-created layout objects)
+  const { allPhotosFlat, photoFlatIndexMap } = useMemo(() => {
+    const flat = groups.flatMap((g) => g.photos);
+    const map = new Map<string, number>();
+    flat.forEach((p, i) => map.set(p.path, i));
+    return { allPhotosFlat: flat, photoFlatIndexMap: map };
+  }, [groups]);
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -173,17 +179,18 @@ export function FavoritesPage() {
               let rowWidth = 0;
               for (const photo of group.photos) {
                 const photoW = (photo.displayWidth / photo.displayHeight) * TARGET_ROW_HEIGHT;
-                if (rowWidth + photoW + GRID_GAP > containerWidth && currentRow.length > 0) {
+                if (rowWidth + photoW > containerWidth && currentRow.length > 0) {
                   rows.push(currentRow);
                   currentRow = [photo];
-                  rowWidth = photoW + GRID_GAP;
+                  rowWidth = photoW;
                 } else {
+                  if (currentRow.length > 0) rowWidth += GRID_GAP;
                   currentRow.push(photo);
-                  rowWidth += photoW + GRID_GAP;
+                  rowWidth += photoW;
                 }
               }
               if (currentRow.length > 0) rows.push(currentRow);
-              const groupStart = allPhotosFlat.indexOf(group.photos[0]);
+              const groupStart = photoFlatIndexMap.get(group.photos[0]?.path ?? '') ?? 0;
               return (
                 <div key={group.dateKey}>
                   <h3 className="text-white font-semibold text-base mb-3 sticky top-0 z-10 py-1 bg-[var(--color-base)]/80 backdrop-blur-sm">{group.label}</h3>
@@ -195,8 +202,7 @@ export function FavoritesPage() {
                         <div key={rowIdx} className="flex" style={{ gap: GRID_GAP }}>
                           {justified.map((photo, i) => (
                             <PhotoTile key={photo.path} photo={photo} isSelected={false} selectionMode={false}
-                              onOpen={() => setLightboxIndex(rowOffset + i)} onToggleSelect={() => {}} onSelectClick={() => {}}
-                              gap={GRID_GAP} />
+                              onOpen={() => setLightboxIndex(rowOffset + i)} onToggleSelect={() => {}} onSelectClick={() => {}} />
                           ))}
                         </div>
                       );

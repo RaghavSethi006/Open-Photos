@@ -81,7 +81,7 @@ export function PhotosPage() {
 
   const { searchQuery, sortBy } = useStore();
   const { paths: favPaths, toggle: toggleFavorite, loadFavorites } = useFavoritesStore();
-  useEffect(() => { loadFavorites(); }, []);
+  useEffect(() => { loadFavorites(); }, [loadFavorites]);
 
   // Close path dropdown
   useEffect(() => {
@@ -170,7 +170,7 @@ export function PhotosPage() {
   const groups = useMemo(() => {
     const layout = buildLayout(sortedEntries);
     return groupByDate(layout);
-  }, [sortedEntries]);
+  }, [sortedEntries, buildLayout, groupByDate]);
 
   const handleBrowse = async () => {
     try {
@@ -226,15 +226,15 @@ export function PhotosPage() {
   };
 
   const addToast = useToastStore((s) => s.addToast);
-  const { trashFolder } = useSettingsStore();
 
   const handleDelete = async (path: string) => {
-    if (!trashFolder.trim()) {
+    const tf = useSettingsStore.getState().trashFolder;
+    if (!tf.trim()) {
       addToast({ type: 'error', message: 'Please set a Trash folder in Settings first.' });
       return;
     }
     try {
-      await moveFilesToTrash([path], trashFolder);
+      await moveFilesToTrash([path], tf);
       setAllEntries((prev) => prev.filter((e) => e.path !== path));
       addToast({ type: 'success', message: 'Moved 1 file to trash' });
     } catch (err) {
@@ -243,13 +243,14 @@ export function PhotosPage() {
   };
 
   const handleBatchDelete = async () => {
-    if (!trashFolder.trim()) {
+    const tf = useSettingsStore.getState().trashFolder;
+    if (!tf.trim()) {
       addToast({ type: 'error', message: 'Please set a Trash folder in Settings first.' });
       return;
     }
     const paths = Array.from(selectedPaths);
     try {
-      await moveFilesToTrash(paths, trashFolder);
+      await moveFilesToTrash(paths, tf);
       setAllEntries((prev) => prev.filter((e) => !selectedPaths.has(e.path)));
       addToast({ type: 'success', message: `Moved ${paths.length} file(s) to trash` });
       setSelectedPaths(new Set());
@@ -264,7 +265,37 @@ export function PhotosPage() {
     setSelectedPaths(new Set());
   };
 
-  const allPhotosFlat: LayoutPhoto[] = groups.flatMap((g) => g.photos);
+  // Build a stable path -> flat index map to avoid reference-equality issues with indexOf
+  const { allPhotosFlat, photoFlatIndexMap } = useMemo(() => {
+    const flat = groups.flatMap((g) => g.photos);
+    const map = new Map<string, number>();
+    flat.forEach((p, i) => map.set(p.path, i));
+    return { allPhotosFlat: flat, photoFlatIndexMap: map };
+  }, [groups]);
+
+  // Memoize row layout for each date group
+  const groupRows = useMemo(() => {
+    return groups.map((group) => {
+      const rows: LayoutPhoto[][] = [];
+      let currentRow: LayoutPhoto[] = [];
+      let rowWidth = 0;
+      for (const photo of group.photos) {
+        const photoW = (photo.displayWidth / photo.displayHeight) * TARGET_ROW_HEIGHT;
+        if (rowWidth + photoW > containerWidth && currentRow.length > 0) {
+          rows.push(currentRow);
+          currentRow = [photo];
+          rowWidth = photoW;
+        } else {
+          if (currentRow.length > 0) rowWidth += GRID_GAP;
+          currentRow.push(photo);
+          rowWidth += photoW;
+        }
+      }
+      if (currentRow.length > 0) rows.push(currentRow);
+      const groupStart = photoFlatIndexMap.get(group.photos[0]?.path ?? '') ?? 0;
+      return { dateKey: group.dateKey, label: group.label, rows, groupStart };
+    });
+  }, [groups, containerWidth, photoFlatIndexMap]);
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -395,61 +426,39 @@ export function PhotosPage() {
         )}
 
         {/* ── Gallery — date-grouped, Google Photos justified layout ── */}
-        {!loading && groups.length > 0 && (
+        {!loading && groupRows.length > 0 && (
           <div className="px-4 py-4 space-y-8">
-            {groups.map((group) => {
-              const rows: LayoutPhoto[][] = [];
-              let currentRow: LayoutPhoto[] = [];
-              let rowWidth = 0;
-
-              for (const photo of group.photos) {
-                const photoW = (photo.displayWidth / photo.displayHeight) * TARGET_ROW_HEIGHT;
-                if (rowWidth + photoW + GRID_GAP > containerWidth && currentRow.length > 0) {
-                  rows.push(currentRow);
-                  currentRow = [photo];
-                  rowWidth = photoW + GRID_GAP;
-                } else {
-                  currentRow.push(photo);
-                  rowWidth += photoW + GRID_GAP;
-                }
-              }
-              if (currentRow.length > 0) rows.push(currentRow);
-
-              const groupStart = allPhotosFlat.indexOf(group.photos[0]);
-
-              return (
-                <div key={group.dateKey}>
-                  <h3 className="text-white font-semibold text-base mb-3 sticky top-0 z-10 py-1 bg-[var(--color-base)]/80 backdrop-blur-sm">
-                    {group.label}
-                  </h3>
-                  <div className="flex flex-col" style={{ gap: GRID_GAP }}>
-                    {rows.map((row, rowIdx) => {
-                      const justified = justifyRow(row, containerWidth, TARGET_ROW_HEIGHT, GRID_GAP);
-                      const rowOffset = groupStart + rows.slice(0, rowIdx).reduce((s, r) => s + r.length, 0);
-                      return (
-                        <div key={rowIdx} className="flex" style={{ gap: GRID_GAP }}>
-                          {justified.map((photo, i) => (
-                            <PhotoTile
-                              key={photo.path}
-                              photo={photo}
-                              isSelected={selectedPaths.has(photo.path)}
-                              selectionMode={selectionMode}
-                              onOpen={() => setLightboxIndex(rowOffset + i)}
-                              onToggleSelect={() => handleToggleSelect(photo.path)}
-                              onSelectClick={handleSelectClick}
-                              onToggleFavorite={() => toggleFavorite(photo.path)}
-                              isFavorite={favPaths.has(photo.path)}
-                              onDelete={() => handleDelete(photo.path)}
-                              gap={GRID_GAP}
-                            />
-                          ))}
-                        </div>
-                      );
-                    })}
-                  </div>
+            {groupRows.map(({ dateKey, label, rows, groupStart }) => (
+              <div key={dateKey}>
+                <h3 className="text-white font-semibold text-base mb-3 sticky top-0 z-10 py-1 bg-[var(--color-base)]/80 backdrop-blur-sm">
+                  {label}
+                </h3>
+                <div className="flex flex-col" style={{ gap: GRID_GAP }}>
+                  {rows.map((row, rowIdx) => {
+                    const justified = justifyRow(row, containerWidth, TARGET_ROW_HEIGHT, GRID_GAP);
+                    const rowOffset = groupStart + rows.slice(0, rowIdx).reduce((s, r) => s + r.length, 0);
+                    return (
+                      <div key={rowIdx} className="flex" style={{ gap: GRID_GAP }}>
+                        {justified.map((photo, i) => (
+                          <PhotoTile
+                            key={photo.path}
+                            photo={photo}
+                            isSelected={selectedPaths.has(photo.path)}
+                            selectionMode={selectionMode}
+                            onOpen={() => setLightboxIndex(rowOffset + i)}
+                            onToggleSelect={() => handleToggleSelect(photo.path)}
+                            onSelectClick={handleSelectClick}
+                            onToggleFavorite={() => toggleFavorite(photo.path)}
+                            isFavorite={favPaths.has(photo.path)}
+                            onDelete={() => handleDelete(photo.path)}
+                          />
+                        ))}
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
       </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
@@ -63,31 +63,20 @@ export function AlbumDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const addToast = useToastStore((s) => s.addToast);
 
-  // Load album data
-  useEffect(() => {
-    const fetchAlbum = async () => {
-      if (!selectedAlbumId) return;
-      setLoading(true);
-      await loadAlbums();
-      const found = albums.find((a) => a.id === selectedAlbumId);
-      if (found) {
-        setAlbum(found);
-        buildAlbumPhotos(found);
-      }
-      setLoading(false);
-    };
-    fetchAlbum();
-  }, [selectedAlbumId]);
+  // Load album list once on mount
+  useEffect(() => { loadAlbums(); }, []);
 
-  // Update album when albums store changes
+  // Reactively sync local album state from store
   useEffect(() => {
     if (!selectedAlbumId) return;
+    setLoading(true);
     const found = albums.find((a) => a.id === selectedAlbumId);
     if (found) {
       setAlbum(found);
       buildAlbumPhotos(found);
     }
-  }, [albums]);
+    setLoading(false);
+  }, [albums, selectedAlbumId]);
 
   // Observe container width
   useEffect(() => {
@@ -161,32 +150,30 @@ export function AlbumDetailPage() {
   };
 
   // Build justified rows with zero gap
-  const rows: AlbumPhoto[][] = [];
-  if (albumPhotos.length > 0 && containerWidth > 0) {
-    let currentRow: AlbumPhoto[] = [];
-    let rowWidth = 0;
+  const { rows, missingCount, allPhotosFlat } = useMemo(() => {
+    const result: AlbumPhoto[][] = [];
+    if (albumPhotos.length > 0 && containerWidth > 0) {
+      let currentRow: AlbumPhoto[] = [];
+      let rowWidth = 0;
 
-    for (const photo of albumPhotos) {
-      const photoW = (photo.width / photo.height) * TARGET_ROW_HEIGHT;
-      if (rowWidth + photoW > containerWidth && currentRow.length > 0) {
-        // Justify current row
-        const justified = justifyRow(currentRow, containerWidth, TARGET_ROW_HEIGHT);
-        rows.push(justified);
-        currentRow = [photo];
-        rowWidth = photoW;
-      } else {
-        currentRow.push(photo);
-        rowWidth += photoW;
+      for (const photo of albumPhotos) {
+        const photoW = (photo.width / photo.height) * TARGET_ROW_HEIGHT;
+        if (rowWidth + photoW > containerWidth && currentRow.length > 0) {
+          const justified = justifyRow(currentRow, containerWidth, TARGET_ROW_HEIGHT);
+          result.push(justified);
+          currentRow = [photo];
+          rowWidth = photoW;
+        } else {
+          currentRow.push(photo);
+          rowWidth += photoW;
+        }
+      }
+      if (currentRow.length > 0) {
+        result.push(currentRow);
       }
     }
-    if (currentRow.length > 0) {
-      // Last row: left-aligned (not stretched)
-      rows.push(currentRow);
-    }
-  }
-
-  const missingCount = albumPhotos.filter((p) => p.missing).length;
-  const allPhotosFlat = rows.flat();
+    return { rows: result, missingCount: albumPhotos.filter((p) => p.missing).length, allPhotosFlat: result.flat() };
+  }, [albumPhotos, containerWidth]);
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
