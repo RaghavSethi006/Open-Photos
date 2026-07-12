@@ -49,9 +49,10 @@ fn model_file_names(size: &ModelSize) -> (&'static str, &'static str, &'static s
 }
 
 fn models_dir() -> Result<PathBuf, String> {
-    let exe = std::env::current_exe().map_err(|e| format!("Cannot resolve executable path: {}", e))?;
-    let exe_dir = exe.parent().ok_or_else(|| "Cannot find executable directory.".to_string())?;
-    let path = exe_dir.join("models");
+    let mut path =
+        dirs_next::data_dir().ok_or_else(|| "Could not find app data directory.".to_string())?;
+    path.push("com.localphotos.app");
+    path.push("models");
     fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     Ok(path)
 }

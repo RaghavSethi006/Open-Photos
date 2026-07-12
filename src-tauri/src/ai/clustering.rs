@@ -63,7 +63,7 @@ pub fn cluster_embeddings(embeddings: &[FaceEmbedding], threshold: f32) -> Vec<V
         clusters.push(cluster);
     }
 
-    clusters.sort_by(|a, b| b.len().cmp(&a.len()));
+    clusters.sort_by_key(|b| std::cmp::Reverse(b.len()));
     clusters
 }
 

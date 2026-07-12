@@ -13,6 +13,8 @@ pub struct Person {
     pub name: String,
     pub face_count: u32,
     pub thumbnail_path: String,
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,30 +137,45 @@ pub fn upsert_faces_in_memory(
 
 pub fn auto_cluster() -> Result<(), String> {
     let mut index = read_index()?;
-    cluster_index(&mut index);
+    full_cluster(&mut index);
     write_index(&index)
 }
 
 pub fn cluster_index(index: &mut FaceIndex) {
-    let threshold = index.similarity_threshold;
-    let merge_threshold = (threshold - 0.12).max(0.30); // more lenient, centroid-vs-centroid
+    centroid_match_unassigned(index);
+    pairwise_cluster_unassigned(index);
+    merge_similar_people(index, (index.similarity_threshold - 0.12).max(0.30));
+    update_person_counts(index);
+}
 
-    // Step 1: attach unassigned faces to existing people via centroid matching
+/// Full clustering: centroid match + pairwise + merge. Used for explicit recluster.
+pub fn full_cluster(index: &mut FaceIndex) {
+    cluster_index(index);
+}
+
+/// Incremental clustering: only match unassigned faces to existing people centroids.
+/// Skips the O(n²) pairwise step. Called during scan_faces checkpoints.
+pub fn centroid_match_unassigned(index: &mut FaceIndex) {
+    let threshold = (index.similarity_threshold - 0.12).max(0.30);
     let centroids = compute_person_centroids(index);
-    if !centroids.is_empty() {
-        for face in index.faces.iter_mut() {
-            if face.person_id.is_some() || face.rejected {
-                continue;
-            }
-            if let Some(person_id) =
-                find_best_centroid_match(&face.embedding, &centroids, merge_threshold)
-            {
-                face.person_id = Some(person_id);
-            }
+    if centroids.is_empty() {
+        return;
+    }
+    for face in index.faces.iter_mut() {
+        if face.person_id.is_some() || face.rejected {
+            continue;
+        }
+        if let Some(person_id) =
+            find_best_centroid_match(&face.embedding, &centroids, threshold)
+        {
+            face.person_id = Some(person_id);
         }
     }
+}
 
-    // Step 2: pairwise-cluster remaining unassigned faces into new people
+/// O(n²) pairwise clustering of remaining unassigned faces.
+fn pairwise_cluster_unassigned(index: &mut FaceIndex) {
+    let threshold = index.similarity_threshold;
     let unassigned_indices: Vec<usize> = index
         .faces
         .iter()
@@ -168,64 +185,63 @@ pub fn cluster_index(index: &mut FaceIndex) {
         .collect();
 
     let n = unassigned_indices.len();
-    if n >= 2 {
-        let unassigned_embs: Vec<Vec<f32>> = unassigned_indices
-            .iter()
-            .map(|&i| index.faces[i].embedding.clone())
-            .collect();
+    if n < 2 {
+        return;
+    }
 
-        let mut adjacency: Vec<Vec<usize>> = vec![vec![]; n];
-        for i in 0..n {
-            for j in (i + 1)..n {
-                if cosine_sim(&unassigned_embs[i], &unassigned_embs[j]) >= threshold {
-                    adjacency[i].push(j);
-                    adjacency[j].push(i);
-                }
-            }
-        }
+    let unassigned_embs: Vec<Vec<f32>> = unassigned_indices
+        .iter()
+        .map(|&i| index.faces[i].embedding.clone())
+        .collect();
 
-        let mut visited = vec![false; n];
-        for i in 0..n {
-            if visited[i] {
-                continue;
-            }
-            let mut cluster = vec![];
-            let mut stack = vec![i];
-            while let Some(node) = stack.pop() {
-                if visited[node] {
-                    continue;
-                }
-                visited[node] = true;
-                cluster.push(node);
-                for &nb in &adjacency[node] {
-                    if !visited[nb] {
-                        stack.push(nb);
-                    }
-                }
-            }
-            if cluster.len() >= 2 {
-                let person_id = Uuid::new_v4().to_string();
-                let person_name = format!("Person {}", index.people.len() + 1);
-                let first_idx = unassigned_indices[cluster[0]];
-                let thumbnail_path = index.faces[first_idx].photo_path.clone();
-
-                for &ci in &cluster {
-                    index.faces[unassigned_indices[ci]].person_id = Some(person_id.clone());
-                }
-
-                index.people.push(Person {
-                    id: person_id,
-                    name: person_name,
-                    face_count: cluster.len() as u32,
-                    thumbnail_path,
-                });
+    let mut adjacency: Vec<Vec<usize>> = vec![vec![]; n];
+    for i in 0..n {
+        for j in (i + 1)..n {
+            if cosine_sim(&unassigned_embs[i], &unassigned_embs[j]) >= threshold {
+                adjacency[i].push(j);
+                adjacency[j].push(i);
             }
         }
     }
 
-    // Step 3: merge any people whose centroids are near-duplicates
-    merge_similar_people(index, merge_threshold);
-    update_person_counts(index);
+    let mut visited = vec![false; n];
+    for i in 0..n {
+        if visited[i] {
+            continue;
+        }
+        let mut cluster = vec![];
+        let mut stack = vec![i];
+        while let Some(node) = stack.pop() {
+            if visited[node] {
+                continue;
+            }
+            visited[node] = true;
+            cluster.push(node);
+            for &nb in &adjacency[node] {
+                if !visited[nb] {
+                    stack.push(nb);
+                }
+            }
+        }
+        if cluster.len() >= 2 {
+            let person_id = Uuid::new_v4().to_string();
+            let person_name = format!("Person {}", index.people.len() + 1);
+            let first_idx = unassigned_indices[cluster[0]];
+            let thumbnail_path = index.faces[first_idx].photo_path.clone();
+
+            for &ci in &cluster {
+                index.faces[unassigned_indices[ci]].person_id = Some(person_id.clone());
+            }
+
+            index.people.push(Person {
+                id: person_id,
+                name: person_name,
+                face_count: cluster.len() as u32,
+                thumbnail_path,
+                hidden: false,
+            });
+        }
+    }
 }
 
 fn compute_person_centroids(index: &FaceIndex) -> Vec<(String, Vec<f32>)> {
@@ -418,6 +434,7 @@ pub fn assign_person(
                 name: person_name.to_string(),
                 face_count: 0,
                 thumbnail_path: String::new(),
+                hidden: false,
             });
             id
         }
@@ -432,12 +449,12 @@ pub fn assign_person(
 
     update_person_counts(&mut index);
     write_index(&index)?;
-    Ok(index
+    index
         .people
         .iter()
         .find(|p| p.id == target_id)
         .cloned()
-        .ok_or_else(|| "Person not found after assignment.".to_string())?)
+        .ok_or_else(|| "Person not found after assignment.".to_string())
 }
 
 pub fn assign_person_to_index(
@@ -460,6 +477,7 @@ pub fn assign_person_to_index(
                 name: person_name.to_string(),
                 face_count: 0,
                 thumbnail_path: String::new(),
+                hidden: false,
             });
             id
         }
@@ -490,6 +508,7 @@ pub fn merge_people(person_ids: &[String], target_name: &str) -> Result<Vec<Pers
         name: target_name.to_string(),
         face_count: 0,
         thumbnail_path: String::new(),
+        hidden: false,
     });
 
     for face in &mut index.faces {
@@ -516,6 +535,26 @@ pub fn delete_person(person_id: &str) -> Result<(), String> {
     }
     index.people.retain(|p| p.id != person_id);
     write_index(&index)
+}
+
+pub fn hide_person(person_id: &str) -> Result<(), String> {
+    let mut index = read_index()?;
+    if let Some(person) = index.people.iter_mut().find(|p| p.id == person_id) {
+        person.hidden = true;
+        write_index(&index)
+    } else {
+        Err("Person not found.".to_string())
+    }
+}
+
+pub fn unhide_person(person_id: &str) -> Result<(), String> {
+    let mut index = read_index()?;
+    if let Some(person) = index.people.iter_mut().find(|p| p.id == person_id) {
+        person.hidden = false;
+        write_index(&index)
+    } else {
+        Err("Person not found.".to_string())
+    }
 }
 
 pub fn reject_faces(face_ids: &[String]) -> Result<(), String> {
@@ -653,6 +692,7 @@ mod tests {
             name: "Person 1".to_string(),
             face_count: 0,
             thumbnail_path: String::new(),
+            hidden: false,
         });
         upsert_faces_in_memory(
             &mut index,
@@ -698,6 +738,7 @@ mod tests {
             name: "Person 1".to_string(),
             face_count: 0,
             thumbnail_path: String::new(),
+            hidden: false,
         });
         upsert_faces_in_memory(&mut index, "a.jpg", &[embedding(0, "a.jpg")], 0.6);
         index.faces[0].person_id = Some("person-1".to_string());
@@ -723,12 +764,14 @@ mod tests {
             name: "Person 1".to_string(),
             face_count: 0,
             thumbnail_path: String::new(),
+            hidden: false,
         });
         index.people.push(Person {
             id: "person-2".to_string(),
             name: "Person 2".to_string(),
             face_count: 0,
             thumbnail_path: String::new(),
+            hidden: false,
         });
         upsert_faces_in_memory(&mut index, "a.jpg", &[embedding(0, "a.jpg")], 0.6);
         index.faces[0].person_id = Some("person-1".to_string());
@@ -755,12 +798,14 @@ mod tests {
             name: "Alex".to_string(),
             face_count: 0,
             thumbnail_path: String::new(),
+            hidden: false,
         });
         index.people.push(Person {
             id: "alex-2".to_string(),
             name: "Alex".to_string(),
             face_count: 0,
             thumbnail_path: String::new(),
+            hidden: false,
         });
         upsert_faces_in_memory(&mut index, "a.jpg", &[embedding(0, "a.jpg")], 0.6);
         let face_id = index.faces[0].id.clone();
