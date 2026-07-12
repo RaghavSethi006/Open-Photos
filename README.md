@@ -15,116 +15,116 @@
 
 ---
 
-## 📖 Overview
+## Overview
 
-**Local Google Photos** is a modern, desktop-native photo management application that brings the convenience of cloud photo services to your local machine—without compromising your privacy. Built with cutting-edge technologies, it offers lightning-fast photo scanning, intelligent organization, and a beautiful interface for browsing your memories.
+**Local Google Photos** is a modern, desktop-native photo management application that brings the convenience of cloud photo services to your local machine — without compromising your privacy. Built with Tauri (Rust backend + React frontend), it offers photo scanning, duplicate detection, face recognition, albums, favorites, trash management, and a map view — all running locally with no external servers.
 
 ### Why Local Google Photos?
 
-- 🔒 **Privacy First**: Your photos never leave your device
-- ⚡ **Lightning Fast**: Powered by Rust for maximum performance
-- 🖥️ **Cross-Platform**: Works on Windows, macOS, and Linux
-- 🎯 **Smart Organization**: Automatic timeline grouping by date
-- 🖼️ **Beautiful UI**: Modern, responsive interface built with React
-- 💾 **Local Database**: Efficient SQLite-based indexing
-- 🔍 **Recursive Scanning**: Automatically finds photos in nested folders
-- 📸 **Format Support**: JPG, JPEG, PNG, WebP, HEIC, GIF
+- **Privacy First**: Your photos never leave your device
+- **Fast**: Powered by Rust for efficient file I/O and image processing
+- **Cross-Platform**: Works on Windows, macOS, and Linux
+- **Smart Organization**: Auto-detected faces, EXIF metadata, timeline grouping
+- **Beautiful UI**: Modern, responsive interface built with React 19 + Tailwind CSS
 
 ---
 
-## ✨ Features
+## Features
 
 ### Current Features
 
-#### 📂 **Intelligent Photo Scanning**
-- Recursive directory scanning with automatic photo detection
-- Supports multiple image formats (JPG, JPEG, PNG, WebP, HEIC, GIF)
-- Database-backed indexing with SQLite for instant access
-- Duplicate detection via path-based deduplication
+#### Photo Scanning & Organization
+- Recursive directory scanning with automatic photo/video detection
+- Supports JPG, JPEG, PNG, WebP, HEIC, GIF, TIFF, BMP, AVIF (images) and MP4, MOV, MKV, AVI, WMV, FLV, M4V, WEBM (videos)
+- Media organizer tool: copies/moves files into `YYYY/MM-Month/DD` folder structure based on EXIF or file dates
+- Dedicated trash system with manifest tracking and automatic cleanup
 
-#### 🖼️ **High-Performance Thumbnails**
-- Automatic thumbnail generation for fast loading
-- Custom URI scheme (`thumb://`) for efficient thumbnail serving
-- Optimized JPEG compression for storage efficiency
-- On-demand thumbnail creation during scanning
+#### Duplicate Detection
+- SHA-256 hash-based exact duplicate scanning
+- Two-phase process: size grouping first, then hashing
+- Batch resolution: delete or move duplicates to a folder
 
-#### 📅 **Timeline View**
-- Chronological organization by year and month
-- Automatic grouping based on EXIF metadata
-- Smart date extraction from photo metadata
-- Beautiful month-based grid layout
+#### Face Recognition (Local AI)
+- ONNX-based face detection using InsightFace models (buffalo_s or buffalo_l)
+- Face embedding extraction and clustering via cosine similarity
+- Automatic person grouping with merge/rename/reject workflows
+- Face thumbnails cropped from source photos
 
-#### 🎨 **Modern UI**
-- Dual view modes: Timeline and Grid
-- Responsive design with Tailwind CSS
-- Virtualized scrolling for thousands of photos
-- Dark mode interface
-- Real-time scan progress feedback
+#### Albums & Favorites
+- Create, rename, delete albums; add/remove photos
+- Favorites toggle on any photo, persisted across sessions
 
-#### 🔧 **Metadata Extraction**
-- EXIF data parsing for date/time information
-- Automatic timezone handling
-- Preserves original capture dates
+#### Timeline & Grid Views
+- Google Photos-style justified layout with date-grouped rows
+- Sort by newest, oldest, name (A-Z/Z-A), or largest
+- Lightbox with zoom/pan, slideshow, EXIF info panel, face overlays
 
----
+#### Map View
+- Leaflet map with marker clustering
+- EXIF GPS extraction for geotagged photos
+- Thumbnail popups on markers
 
-## 🏗️ Architecture
+#### Metadata Extraction
+- EXIF parsing: date taken, camera make/model, aperture, shutter speed, ISO, focal length, GPS coordinates, orientation
 
-Local Google Photos uses a modern hybrid architecture combining the performance of native code with the flexibility of web technologies:
-
-```
-┌─────────────────────────────────────────────────────┐
-│                  Frontend (React)                    │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────┐ │
-│  │   Timeline   │  │  Photo Grid  │  │  Scanner  │ │
-│  │     View     │  │     View     │  │  Control  │ │
-│  └──────────────┘  └──────────────┘  └───────────┘ │
-│           │                │                │        │
-│           └────────────────┴────────────────┘        │
-│                      Tauri IPC                       │
-└────────────────────────┬────────────────────────────┘
-                         │
-┌────────────────────────┴────────────────────────────┐
-│                  Backend (Rust)                      │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────┐ │
-│  │   Scanner    │  │  Thumbnail   │  │  Metadata │ │
-│  │    Engine    │  │  Generator   │  │ Extractor │ │
-│  └──────────────┘  └──────────────┘  └───────────┘ │
-│           │                │                │        │
-│           └────────────────┴────────────────┘        │
-│                      SQLite DB                       │
-│              (photos.db - App Data Dir)              │
-└─────────────────────────────────────────────────────┘
-```
-
-### Core Components
-
-#### **Frontend Layer**
-- **React 19**: Modern UI with hooks and concurrent features
-- **TanStack Query**: Efficient data fetching and caching
-- **React Virtuoso**: Performant virtual scrolling for large photo collections
-- **Tailwind CSS**: Utility-first styling for rapid development
-
-#### **Backend Layer**
-- **Scanner Module**: Recursive directory traversal with `walkdir`
-- **Database Module**: SQLx-based async SQLite operations
-- **Thumbnail Module**: Image processing with the `image` crate
-- **Metadata Module**: EXIF parsing with `kamadak-exif`
-
-#### **Data Storage**
-- **SQLite Database**: Schema-based photo indexing
-- **Thumbnail Cache**: Separate directory for generated thumbnails
-- **App Data Directory**: Platform-specific storage locations
+#### Dark Mode & Theming
+- 7 accent colors, dark/light theme
+- Glassmorphism design with Tailwind CSS
 
 ---
 
-## 🚀 Getting Started
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Frontend (React 19)                    │
+│  ┌──────────┐  ┌───────────┐  ┌─────────┐  ┌────────┐ │
+│  │ Photos   │  │ People    │  │ Albums  │  │ Map    │ │
+│  │ Timeline │  │ (Face AI) │  │ Manager │  │ View   │ │
+│  └──────────┘  └───────────┘  └─────────┘  └────────┘ │
+│        │              │              │             │      │
+│        └──────────────┴──────────────┴─────────────┘      │
+│                      Tauri IPC (invoke)                    │
+└──────────────────────────┬────────────────────────────────┘
+                           │
+┌──────────────────────────┴────────────────────────────────┐
+│                   Backend (Rust)                           │
+│  ┌──────────┐  ┌───────────┐  ┌──────────┐  ┌─────────┐ │
+│  │ Commands │  │ Scanner   │  │ AI/Face  │  │Metadata │ │
+│  │ (49 IPC) │  │ Organizer │  │ Detection│  │ EXIF    │ │
+│  └──────────┘  └───────────┘  └──────────┘  └─────────┘ │
+│                      │                                     │
+│         ┌────────────┼────────────┐                        │
+│         ▼            ▼            ▼                        │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐                   │
+│  │ albums   │ │favorites │ │face_index│                   │
+│  │ .json    │ │ .json    │ │ .json    │                   │
+│  └──────────┘ └──────────┘ └──────────┘                   │
+│         (JSON-file persistence per domain)                 │
+└───────────────────────────────────────────────────────────┘
+```
+
+### Persistence Model
+
+Currently uses JSON-file-per-domain persistence under `{app_data}/com.localphotos.app/`:
+
+| File | Purpose |
+|------|---------|
+| `albums.json` | Album definitions (name, description, photos) |
+| `favorites.json` | Set of favorited photo paths |
+| `face_index.json` | Face records, embeddings, people |
+
+Settings and saved paths are stored in `localStorage` on the frontend.
+
+---
+
+## Getting Started
 
 ### Prerequisites
 
 - **Node.js** (v18 or higher)
-- **Rust** (latest stable version)
-- **npm** or **pnpm**
+- **Rust** (latest stable)
+- **npm**
 
 ### Installation
 
@@ -151,77 +151,83 @@ Local Google Photos uses a modern hybrid architecture combining the performance 
 
 ---
 
-## 💻 Usage
+## Usage
 
 ### Scanning Photos
 
 1. **Launch the application**
-2. **Enter a folder path** in the input field at the top
-3. **Click "Scan"** to recursively scan for photos
-4. **Wait for completion** - the app will show how many images were found
-5. **View your photos** in Timeline or Grid view
+2. **Enter a folder path** or use the folder picker
+3. **Click "Choose Folder"** to browse photos
+4. **View your photos** in Timeline or Grid view
 
-### Viewing Photos
+### Organizing Media
 
-- **Timeline View**: Browse photos organized by month and year
-- **Grid View**: See all photos in a continuous grid
-- **Switch views**: Use the toggle buttons in the top toolbar
+Go to **Scan** view → choose source/destination → configure options → run the media organizer to sort photos into `YYYY/MM-Month/DD` folders.
 
-### Supported Paths
+### Finding Duplicates
 
-Enter any valid directory path on your system:
-- Windows: `C:\Users\YourName\Pictures`
-- macOS: `/Users/YourName/Pictures`
-- Linux: `/home/yourname/Pictures`
+Go to **Delete Duplicates** → choose folder → scan → review results → resolve (delete or move).
+
+### Face Detection
+
+Go to **People** → initialize AI models (auto-downloaded) → scan a folder → name detected people.
+
+### Map View
+
+Open a folder with geotagged photos → markers appear on the map with thumbnail popups.
 
 ---
 
-## 🛠️ Development
-
-### Project Structure
+## Project Structure
 
 ```
 local-google-photos/
 ├── src/                    # React frontend
-│   ├── components/         # UI components
-│   │   ├── PhotoGrid.tsx   # Grid view component
-│   │   └── Timeline.tsx    # Timeline view component
+│   ├── components/         # UI components (27 files)
 │   ├── hooks/              # Custom React hooks
-│   ├── App.tsx             # Main app component
+│   ├── lib/                # Tauri IPC bridge + TypeScript types
+│   ├── store/              # Zustand stores (settings, albums, favorites, etc.)
+│   ├── App.tsx             # Root component with view routing
+│   ├── index.css           # Global styles
 │   └── main.tsx            # Entry point
 ├── src-tauri/              # Rust backend
 │   ├── src/
-│   │   ├── db/             # Database operations
-│   │   │   ├── mod.rs      # DB commands
-│   │   │   └── schema.sql  # Database schema
-│   │   ├── scanner/        # Photo scanning logic
-│   │   ├── thumbs/         # Thumbnail generation
+│   │   ├── ai/             # Face analyzer, clustering, index
+│   │   ├── commands/       # 10 module files, 49 Tauri commands
 │   │   ├── metadata/       # EXIF extraction
-│   │   └── lib.rs          # Main Tauri setup
+│   │   ├── scanner/        # Albums, duplicates, favorites, organizer, trash
+│   │   └── lib.rs          # Tauri app setup
 │   ├── Cargo.toml          # Rust dependencies
 │   └── tauri.conf.json     # Tauri configuration
-├── package.json            # Node dependencies
+├── package.json            # Node.js dependencies (React 19, Zustand, Framer Motion, Leaflet)
 └── README.md               # This file
 ```
 
 ### Key Technologies
 
 | Layer | Technology | Purpose |
-|-------|-----------|---------
+|-------|-----------|---------|
 | **Frontend** | React 19 | UI framework |
 | | TypeScript | Type safety |
-| | Tailwind CSS | Styling |
-| | TanStack Query | Data fetching |
-| | React Virtuoso | Virtual scrolling |
+| | Tailwind CSS 4 | Styling |
+| | Zustand | State management |
+| | Framer Motion | Animations |
+| | Leaflet + MarkerCluster | Map view |
+| | Lucide React | Icons |
 | **Backend** | Rust | High-performance core |
 | | Tauri 2 | Desktop framework |
-| | SQLx | Database access |
-| | walkdir | Directory traversal |
+| | face_id (ONNX) | Face detection & recognition |
 | | image | Image processing |
+| | walkdir | Directory traversal |
 | | kamadak-exif | EXIF parsing |
-| **Database** | SQLite | Local storage |
+| **Storage** | JSON files (per-domain) | Albums, favorites, face index |
+| | localStorage | Settings, saved paths |
 
-### Development Commands
+---
+
+## Development
+
+### Commands
 
 ```bash
 # Start development server
@@ -235,96 +241,61 @@ npm run tauri build
 
 # Type checking
 npm run build
-
-# Preview production build
-npm run preview
-```
-
-### Database Schema
-
-```sql
-CREATE TABLE IF NOT EXISTS images (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    path TEXT NOT NULL UNIQUE,
-    filename TEXT NOT NULL,
-    date_taken TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
 ```
 
 ### Adding New Features
 
 1. **Backend (Rust)**:
-   - Add Tauri commands in `src-tauri/src/lib.rs`
-   - Create new modules in `src-tauri/src/`
-   - Export commands in `invoke_handler`
+   - Create command functions in `src-tauri/src/commands/`
+   - Register in `invoke_handler` in `lib.rs`
+   - Add TypeScript interface + invoke wrapper in `src/lib/tauri.ts`
 
 2. **Frontend (React)**:
    - Create components in `src/components/`
    - Use `invoke` from `@tauri-apps/api/core` to call Rust
-   - Integrate with TanStack Query for data management
+   - Manage state with Zustand stores
 
 ---
 
-## 🗺️ Roadmap
+## Roadmap
 
 ### Phase 1: Foundation ✅
-- [x] Basic photo scanning
-- [x] SQLite database setup
-- [x] Thumbnail generation
-- [x] Timeline view
-- [x] Metadata extraction
+- [x] Photo scanning and browsing
+- [x] Timeline and grid views
+- [x] EXIF metadata extraction
+- [x] Media organizer (date-based folder sorting)
+- [x] Face detection and clustering
+- [x] Albums and favorites
+- [x] Duplicate detection (SHA-256)
+- [x] Trash system with manifest
+- [x] Map view with GPS data
+- [x] Dark mode and theming
 
-### Phase 2: Enhancement 🚧
-- [ ] Face detection with local AI models
-- [ ] Advanced search and filtering
-- [ ] Photo editing capabilities
-- [ ] Albums and collections
-- [ ] Tags and labels
+### Phase 2: Performance & Infrastructure 🚧
+- [ ] Thumbnail generation pipeline
+- [ ] SQLite photo index (replace filesystem walk)
+- [ ] File system watcher for live updates
+- [ ] Parallel face detection with downscaling
+- [ ] Incremental clustering (skip O(n²) on incremental scan)
+- [ ] System tray + background indexing
 
-### Phase 3: Advanced Features 🔮
-- [ ] Duplicate photo detection
-- [ ] Import from external devices
-- [ ] Export and sharing options
-- [ ] Backup and sync to local NAS
-- [ ] Map view with geolocation
-- [ ] Video support
+### Phase 3: Discovery & AI 🔮
+- [ ] Metadata search (camera, date range, location, faces)
+- [ ] Perceptual hash near-duplicate detection
+- [ ] Reverse geocoding on map
+- [ ] "On This Day" memories
+- [ ] Object/scene tagging
+- [ ] OCR for screenshots/documents
 
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
-
-### Development Guidelines
-
-1. Follow Rust best practices and clippy suggestions
-2. Use TypeScript strict mode
-3. Write meaningful commit messages
-4. Test your changes thoroughly
-5. Update documentation as needed
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+### Phase 4: Media Management 🔮
+- [ ] Video thumbnails and scrubbing
+- [ ] Multiple watched root folders + unified library
+- [ ] Non-destructive editing (rotate, crop)
+- [ ] Export/share flows (zip, copy)
+- [ ] Encrypted backup to NAS/external drive
 
 ---
 
-## 🙏 Acknowledgments
+## License
 
-- [Tauri](https://tauri.app) - For the amazing framework
-- [React](https://reactjs.org) - For the UI library
-- [SQLx](https://github.com/launchbadge/sqlx) - For async SQLite support
-- The open-source community for inspiration and tools
-
----
-
-<div align="center">
-
-**Built with ❤️ and a commitment to privacy**
-
-[Report Bug](https://github.com/yourusername/local-google-photos/issues) · [Request Feature](https://github.com/yourusername/local-google-photos/issues)
-
-</div>
+This project is licensed under the MIT License.
