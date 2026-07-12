@@ -6,22 +6,24 @@ import {
   Folder,
   X,
   ImageOff,
-  Loader2,
   Bookmark,
   CheckSquare,
   Image,
   Trash2,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { listPhotos, isTauriRuntime, moveFilesToTrash, type PhotoEntry } from '../lib/tauri';
+import { listPhotos, browseFolder, indexFolder, ensureThumbnails, isTauriRuntime, moveFilesToTrash, type PhotoEntry, type IndexedPhoto } from '../lib/tauri';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useSavedPathsStore } from '../store/useSavedPathsStore';
 import { useStore } from '../store/useStore';
 import { useFavoritesStore } from '../store/useFavoritesStore';
 import { useToastStore } from '../store/useToastStore';
 import { PhotoTile, type LayoutPhoto } from './PhotoTile';
+import { SkeletonTile } from './SkeletonTile';
+import { VariableSizeList as List } from 'react-window';
 import { CreateAlbumDialog } from './CreateAlbumDialog';
 import { AddToAlbumDialog } from './AddToAlbumDialog';
+import { ConfirmDialog } from './ConfirmDialog';
 
 import { Lightbox } from './Lightbox';
 
@@ -78,8 +80,16 @@ export function PhotosPage() {
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [showAlbumDialog, setShowAlbumDialog] = useState(false);
   const [showAddToAlbumDialog, setShowAddToAlbumDialog] = useState(false);
+  const [thumbnailMap, setThumbnailMap] = useState<Map<string, string>>(new Map());
+  const [confirmDeletePath, setConfirmDeletePath] = useState<string | null>(null);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
 
-  const { searchQuery, sortBy } = useStore();
+  const { searchQuery, sortBy, filters } = useStore();
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(searchQuery), 200);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
   const { paths: favPaths, toggle: toggleFavorite, loadFavorites } = useFavoritesStore();
   useEffect(() => { loadFavorites(); }, [loadFavorites]);
 
@@ -138,10 +148,43 @@ export function PhotosPage() {
     setSelectionMode(false);
     setSelectedPaths(new Set());
     try {
-      const entries = await listPhotos(dir);
-      // Filter out folders — only show photos (folders appear as temp albums in AlbumsPage)
+      // Try indexed browsing first (faster, supports search/filter)
+      let entries: PhotoEntry[];
+      try {
+        const indexed = await browseFolder(dir);
+        if (indexed.length > 0) {
+          entries = indexed.map((p: IndexedPhoto): PhotoEntry => ({
+            path: p.path,
+            name: p.name,
+            sizeBytes: p.sizeBytes,
+            modifiedMs: p.modifiedMs,
+            isVideo: p.isVideo,
+            isFolder: false,
+          }));
+        } else {
+          // Not indexed yet — fall back to filesystem walk
+          entries = await listPhotos(dir);
+        }
+      } catch {
+        // Index not available — fall back to filesystem walk
+        entries = await listPhotos(dir);
+      }
+      // Fire-and-forget index in background (even if we used listPhotos this time)
+      indexFolder(dir).catch(() => {});
       const photoEntries = entries.filter((e) => !e.isFolder);
       setAllEntries(photoEntries);
+
+      // Batch-pre-generate thumbnails for all photos (avoids N concurrent IPC calls)
+      const paths = photoEntries.map((e) => e.path);
+      if (paths.length > 0) {
+        ensureThumbnails(paths, 320).then((thumbPaths) => {
+          const map = new Map<string, string>();
+          for (let i = 0; i < paths.length; i++) {
+            if (thumbPaths[i]) map.set(paths[i], thumbPaths[i]);
+          }
+          setThumbnailMap(map);
+        }).catch(() => {});
+      }
     } catch (e) {
       setError(String(e));
     } finally {
@@ -150,10 +193,16 @@ export function PhotosPage() {
   };
 
   const filteredEntries = useMemo(() => {
-    if (!searchQuery.trim()) return allEntries;
-    const q = searchQuery.toLowerCase();
-    return allEntries.filter((e) => e.name.toLowerCase().includes(q));
-  }, [allEntries, searchQuery]);
+    let result = allEntries;
+    if (debouncedQuery.trim()) {
+      const q = debouncedQuery.toLowerCase();
+      result = result.filter((e) => e.name.toLowerCase().includes(q));
+    }
+    if (filters.isVideo !== undefined) {
+      result = result.filter((e) => e.isVideo === filters.isVideo);
+    }
+    return result;
+  }, [allEntries, debouncedQuery, filters]);
 
   const sortedEntries = useMemo(() => {
     const entries = [...filteredEntries];
@@ -187,13 +236,20 @@ export function PhotosPage() {
   const { pendingFolder, setPendingFolder } = useStore();
 
   useEffect(() => {
-    const target = pendingFolder || defaultFolder;
-    if (target && !folder) {
+    if (pendingFolder && pendingFolder !== folder) {
+      setFolder(pendingFolder);
+      loadPhotos(pendingFolder);
+      setPendingFolder(null);
+    }
+  }, [pendingFolder]);
+
+  useEffect(() => {
+    const target = defaultFolder;
+    if (target && !folder && !pendingFolder) {
       setFolder(target);
       loadPhotos(target);
-      if (pendingFolder) setPendingFolder(null);
     }
-  }, []);
+  }, [defaultFolder]);
 
   const handleReload = () => {
     if (folder) loadPhotos(folder);
@@ -228,6 +284,15 @@ export function PhotosPage() {
   const addToast = useToastStore((s) => s.addToast);
 
   const handleDelete = async (path: string) => {
+    const { confirmBeforeDelete } = useSettingsStore.getState();
+    if (confirmBeforeDelete) {
+      setConfirmDeletePath(path);
+      return;
+    }
+    await doDelete(path);
+  };
+
+  const doDelete = async (path: string) => {
     const tf = useSettingsStore.getState().trashFolder;
     if (!tf.trim()) {
       addToast({ type: 'error', message: 'Please set a Trash folder in Settings first.' });
@@ -236,6 +301,9 @@ export function PhotosPage() {
     try {
       await moveFilesToTrash([path], tf);
       setAllEntries((prev) => prev.filter((e) => e.path !== path));
+      if (favPaths.has(path)) {
+        useFavoritesStore.getState().remove(path);
+      }
       addToast({ type: 'success', message: 'Moved 1 file to trash' });
     } catch (err) {
       addToast({ type: 'error', message: String(err) });
@@ -243,6 +311,15 @@ export function PhotosPage() {
   };
 
   const handleBatchDelete = async () => {
+    const { confirmBeforeDelete } = useSettingsStore.getState();
+    if (confirmBeforeDelete) {
+      setConfirmDeletePath('__batch__');
+      return;
+    }
+    await doBatchDelete();
+  };
+
+  const doBatchDelete = async () => {
     const tf = useSettingsStore.getState().trashFolder;
     if (!tf.trim()) {
       addToast({ type: 'error', message: 'Please set a Trash folder in Settings first.' });
@@ -252,6 +329,11 @@ export function PhotosPage() {
     try {
       await moveFilesToTrash(paths, tf);
       setAllEntries((prev) => prev.filter((e) => !selectedPaths.has(e.path)));
+      favPaths.forEach((fp) => {
+        if (selectedPaths.has(fp)) {
+          useFavoritesStore.getState().remove(fp);
+        }
+      });
       addToast({ type: 'success', message: `Moved ${paths.length} file(s) to trash` });
       setSelectedPaths(new Set());
       setSelectionMode(false);
@@ -406,9 +488,14 @@ export function PhotosPage() {
         )}
 
         {loading && (
-          <div className="flex flex-col items-center justify-center h-full gap-4 text-[var(--color-text-muted)]">
-            <Loader2 size={36} className="animate-spin text-[var(--color-primary)]" />
-            <p className="text-sm">Scanning folder…</p>
+          <div className="px-4 py-4 space-y-1">
+            {Array.from({ length: 10 }).map((_, i) => (
+              <div key={i} className="flex gap-1">
+                {Array.from({ length: 5 }).map((_, j) => (
+                  <SkeletonTile key={j} width={320} height={240} />
+                ))}
+              </div>
+            ))}
           </div>
         )}
 
@@ -427,38 +514,56 @@ export function PhotosPage() {
 
         {/* ── Gallery — date-grouped, Google Photos justified layout ── */}
         {!loading && groupRows.length > 0 && (
-          <div className="px-4 py-4 space-y-8">
-            {groupRows.map(({ dateKey, label, rows, groupStart }) => (
-              <div key={dateKey}>
-                <h3 className="text-white font-semibold text-base mb-3 sticky top-0 z-10 py-1 bg-[var(--color-base)]/80 backdrop-blur-sm">
-                  {label}
-                </h3>
-                <div className="flex flex-col" style={{ gap: GRID_GAP }}>
-                  {rows.map((row, rowIdx) => {
-                    const justified = justifyRow(row, containerWidth, TARGET_ROW_HEIGHT, GRID_GAP);
-                    const rowOffset = groupStart + rows.slice(0, rowIdx).reduce((s, r) => s + r.length, 0);
-                    return (
-                      <div key={rowIdx} className="flex" style={{ gap: GRID_GAP }}>
-                        {justified.map((photo, i) => (
-                          <PhotoTile
-                            key={photo.path}
-                            photo={photo}
-                            isSelected={selectedPaths.has(photo.path)}
-                            selectionMode={selectionMode}
-                            onOpen={() => setLightboxIndex(rowOffset + i)}
-                            onToggleSelect={() => handleToggleSelect(photo.path)}
-                            onSelectClick={handleSelectClick}
-                            onToggleFavorite={() => toggleFavorite(photo.path)}
-                            isFavorite={favPaths.has(photo.path)}
-                            onDelete={() => handleDelete(photo.path)}
-                          />
-                        ))}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+          <div className="px-4 py-4" style={{ height: '100%' }}>
+            <List
+              height={containerRef.current?.clientHeight ?? 600}
+              itemCount={groupRows.length}
+              itemSize={(index: number) => {
+                const group = groupRows[index];
+                const rows = group.rows.length;
+                const headerHeight = 44;
+                const totalGap = (rows - 1) * GRID_GAP;
+                return headerHeight + rows * TARGET_ROW_HEIGHT + totalGap + 32;
+              }}
+              width="100%"
+              itemData={{ groupRows, containerWidth, selectedPaths, selectionMode, handleToggleSelect, handleSelectClick, handleDelete, thumbnailMap, favPaths, toggleFavorite, setLightboxIndex, photoFlatIndexMap }}
+            >
+              {({ index, style, data }: any) => {
+                const { dateKey, label, rows, groupStart } = data.groupRows[index];
+                return (
+                  <div key={dateKey} style={style}>
+                    <h3 className="text-white font-semibold text-base mb-3 py-1 bg-[var(--color-base)]/80">
+                      {label}
+                    </h3>
+                    <div className="flex flex-col" style={{ gap: GRID_GAP }}>
+                      {rows.map((row: LayoutPhoto[], rowIdx: number) => {
+                        const justified = justifyRow(row, containerWidth, TARGET_ROW_HEIGHT, GRID_GAP);
+                        const rowOffset = groupStart + rows.slice(0, rowIdx).reduce((s: number, r: LayoutPhoto[]) => s + r.length, 0);
+                        return (
+                          <div key={rowIdx} className="flex" style={{ gap: GRID_GAP }}>
+                            {justified.map((photo: LayoutPhoto, i: number) => (
+                              <PhotoTile
+                                key={photo.path}
+                                photo={photo}
+                                isSelected={selectedPaths.has(photo.path)}
+                                selectionMode={selectionMode}
+                                onOpen={() => setLightboxIndex(rowOffset + i)}
+                                onToggleSelect={() => handleToggleSelect(photo.path)}
+                                onSelectClick={handleSelectClick}
+                                onToggleFavorite={() => toggleFavorite(photo.path)}
+                                isFavorite={favPaths.has(photo.path)}
+                                onDelete={() => handleDelete(photo.path)}
+                                thumbnailSrc={thumbnailMap.get(photo.path)}
+                              />
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              }}
+            </List>
           </div>
         )}
       </div>
@@ -525,6 +630,24 @@ export function PhotosPage() {
         open={showAddToAlbumDialog}
         onClose={() => setShowAddToAlbumDialog(false)}
         selectedPaths={Array.from(selectedPaths)}
+      />
+
+      <ConfirmDialog
+        open={confirmDeletePath !== null}
+        title="Move to trash?"
+        message="This file will be moved to the trash folder. You can restore it later from the Trash view."
+        confirmLabel="Move to Trash"
+        danger
+        onConfirm={async () => {
+          const p = confirmDeletePath;
+          setConfirmDeletePath(null);
+          if (p === '__batch__') {
+            await doBatchDelete();
+          } else if (p) {
+            await doDelete(p);
+          }
+        }}
+        onCancel={() => setConfirmDeletePath(null)}
       />
     </div>
   );

@@ -14,7 +14,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { isTauriRuntime, type PhotoEntry } from '../lib/tauri';
+import { type PhotoEntry } from '../lib/tauri';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import { useToastStore } from '../store/useToastStore';
 
@@ -35,6 +35,7 @@ interface Props {
   onToggleFavorite?: () => void;
   isFavorite?: boolean;
   onDelete?: () => void;
+  thumbnailSrc?: string;
 }
 
 export function PhotoTile({
@@ -48,6 +49,7 @@ export function PhotoTile({
   onToggleFavorite,
   isFavorite,
   onDelete,
+  thumbnailSrc,
 }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
@@ -57,6 +59,22 @@ export function PhotoTile({
   const addToast = useToastStore((s) => s.addToast);
   const pathRef = useRef(photo.path);
   pathRef.current = photo.path;
+
+  useEffect(() => {
+    setLoaded(false);
+    setErrored(false);
+  }, [thumbnailSrc]);
+
+  useEffect(() => {
+    if (!showMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showMenu]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -94,17 +112,6 @@ export function PhotoTile({
     return items;
   }, [onOpen, onToggleFavorite, isFavorite, onSelectClick, copyPath, onDelete]);
 
-  useEffect(() => {
-    if (!showMenu) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showMenu]);
-
   if (photo.isFolder) {
     return (
       <div
@@ -123,7 +130,8 @@ export function PhotoTile({
   }
 
   const isPhoto = !photo.isVideo;
-  const assetUrl = isTauriRuntime() ? convertFileSrc(photo.path) : photo.path;
+  const hasThumbnail = !!thumbnailSrc;
+  const assetUrl = hasThumbnail ? convertFileSrc(thumbnailSrc!) : '';
 
   const handleClick = () => {
     if (selectionMode) {
@@ -146,18 +154,35 @@ export function PhotoTile({
       onContextMenu={handleContextMenu}
     >
       <div className="absolute inset-0 overflow-hidden rounded-sm">
-        {!loaded && !errored && (
-          <div className="absolute inset-0 flex items-center justify-center">
+        {!hasThumbnail ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/[0.03]">
             <Loader2 size={20} className="text-white/20 animate-spin" />
           </div>
-        )}
-
-        {errored ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-white/20">
-            <ImageOff size={20} />
-            <span className="text-[10px]">error</span>
-          </div>
-        ) : !isPhoto ? (
+        ) : isPhoto ? (
+          <>
+            {!loaded && !errored && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Loader2 size={20} className="text-white/20 animate-spin" />
+              </div>
+            )}
+            {errored ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-white/20">
+                <ImageOff size={20} />
+                <span className="text-[10px]">error</span>
+              </div>
+            ) : (
+              <img
+                src={assetUrl}
+                alt={photo.name}
+                className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                loading="lazy"
+                onLoad={() => setLoaded(true)}
+                onError={() => setErrored(true)}
+                draggable={false}
+              />
+            )}
+          </>
+        ) : (
           <div className="relative w-full h-full">
             <video
               src={assetUrl}
@@ -173,16 +198,6 @@ export function PhotoTile({
               </div>
             </div>
           </div>
-        ) : (
-          <img
-            src={assetUrl}
-            alt={photo.name}
-            className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-            loading="lazy"
-            onLoad={() => setLoaded(true)}
-            onError={() => setErrored(true)}
-            draggable={false}
-          />
         )}
 
         {/* Hover overlay */}
