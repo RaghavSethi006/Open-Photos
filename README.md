@@ -1,4 +1,4 @@
-# Local Google Photos
+# Open Photos
 
 <div align="center">
 
