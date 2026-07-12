@@ -4,6 +4,7 @@ import { ArrowLeft, User, Loader2 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useStore } from '../store/useStore';
 import { getPersonPhotos, listPeople, type PersonInfo, isTauriRuntime } from '../lib/tauri';
+import { useThumbnail } from '../hooks/useThumbnail';
 import { Lightbox } from './Lightbox';
 
 interface DisplayPhoto {
@@ -99,28 +100,7 @@ export function PersonDetailPage() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {photos.map((photo, i) => (
-              <motion.div
-                key={photo.path}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.02 }}
-                onClick={() => setLightboxIndex(i)}
-                className="glass-panel rounded-xl overflow-hidden group cursor-pointer interactive hover:bg-white/[0.06] transition-colors"
-              >
-                <div className="aspect-[4/3] bg-black/40 relative overflow-hidden">
-                  <img
-                    src={convertFileSrc(photo.path)}
-                    alt={photo.name}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                  />
-                </div>
-                <div className="px-3 py-2">
-                  <p className="text-xs text-[var(--color-text-muted)] truncate" title={photo.name}>
-                    {photo.name}
-                  </p>
-                </div>
-              </motion.div>
+              <PhotoCard key={photo.path} photo={photo} index={i} onClick={() => setLightboxIndex(i)} />
             ))}
           </div>
         )}
@@ -138,5 +118,33 @@ export function PersonDetailPage() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+function PhotoCard({ photo, index, onClick }: { photo: DisplayPhoto; index: number; onClick: () => void }) {
+  const thumbSrc = useThumbnail(photo.path);
+  return (
+    <motion.div
+      key={photo.path}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.02 }}
+      onClick={onClick}
+      className="glass-panel rounded-xl overflow-hidden group cursor-pointer interactive hover:bg-white/[0.06] transition-colors"
+    >
+      <div className="aspect-[4/3] bg-black/40 relative overflow-hidden">
+        <img
+          src={thumbSrc ?? (photo.src ?? convertFileSrc(photo.path))}
+          alt={photo.name}
+          className="w-full h-full object-cover"
+          loading="lazy"
+        />
+      </div>
+      <div className="px-3 py-2">
+        <p className="text-xs text-[var(--color-text-muted)] truncate" title={photo.name}>
+          {photo.name}
+        </p>
+      </div>
+    </motion.div>
   );
 }

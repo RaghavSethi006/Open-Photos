@@ -1,33 +1,34 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, UserPlus, Loader2, ChevronRight, User,
-  FolderOpen, AlertCircle, RefreshCw, Check,
+  FolderOpen, Check, Pencil, Eye, EyeOff,
 } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { useStore } from '../store/useStore';
 import { useToastStore } from '../store/useToastStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
   listPeople,
-  checkFaceModels,
   scanFaces,
   listPhotos,
+  hidePerson,
+  unhidePerson,
   type PersonInfo,
   isTauriRuntime,
 } from '../lib/tauri';
 import { FaceDetectProgressHUD } from './FaceDetectProgressHUD';
 import { MergePeopleDialog } from './MergePeopleDialog';
+import { RenamePersonDialog } from './RenamePersonDialog';
+import { ConfirmDialog } from './ConfirmDialog';
 
 export function PeoplePage() {
-  const { setCurrentView, setSelectedPersonId } = useStore();
+  const { setCurrentView, setSelectedPersonId, bumpFaceVersion } = useStore();
   const addToast = useToastStore((s) => s.addToast);
   const settings = useSettingsStore();
   const [people, setPeople] = useState<PersonInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modelsReady, setModelsReady] = useState(false);
-  const [modelsLoading, setModelsLoading] = useState(false);
-  const [modelError, setModelError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
 
   // Merge states
@@ -35,45 +36,34 @@ export function PeoplePage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
 
+  // Rename states
+  const [renameTarget, setRenameTarget] = useState<PersonInfo | null>(null);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+
+  // Hide states
+  const [showHidden, setShowHidden] = useState(false);
+  const [hideConfirmTarget, setHideConfirmTarget] = useState<PersonInfo | null>(null);
+
+  const { faceVersion } = useStore();
+
   const loadPeople = useCallback(async () => {
     if (!isTauriRuntime()) {
       setLoading(false);
       return;
     }
     try {
-      const result = await listPeople();
+      const result = await listPeople(showHidden);
       setPeople(result);
     } catch {
       // face index may not exist yet
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  const modelSizeRef = useRef(settings.faceModelSize);
-  modelSizeRef.current = settings.faceModelSize;
-
-  const initModels = useCallback(async () => {
-    if (!isTauriRuntime()) return;
-    setModelsLoading(true);
-    setModelError(null);
-    try {
-      await checkFaceModels(modelSizeRef.current === 'large' ? 'large' : 'small');
-      setModelsReady(true);
-      setModelError(null);
-    } catch (err) {
-      setModelsReady(false);
-      setModelError(err instanceof Error ? err.message : String(err));
-      addToast({ message: 'Face AI models failed to download. Check your internet connection.', type: 'error' });
-    } finally {
-      setModelsLoading(false);
-    }
-  }, [addToast]);
+  }, [showHidden]);
 
   useEffect(() => {
-    initModels();
     loadPeople();
-  }, [initModels, loadPeople]);
+  }, [loadPeople, faceVersion]);
 
   const handleScanFaces = async () => {
     if (scanning || !isTauriRuntime()) return;
@@ -123,6 +113,18 @@ export function PeoplePage() {
     }
   };
 
+  const handleRenameClick = (e: React.MouseEvent, person: PersonInfo) => {
+    e.stopPropagation();
+    setRenameTarget(person);
+    setRenameDialogOpen(true);
+  };
+
+  const handleRenamed = async () => {
+    setRenameDialogOpen(false);
+    setRenameTarget(null);
+    await loadPeople();
+  };
+
   const handleMerged = async () => {
     setIsSelectMode(false);
     setSelectedIds([]);
@@ -150,20 +152,17 @@ export function PeoplePage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {modelError && (
-                <button
-                  onClick={initModels}
-                  disabled={modelsLoading}
-                  className="flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-300 hover:bg-amber-400/20 transition-colors"
-                >
-                  {modelsLoading ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <RefreshCw size={14} />
-                  )}
-                  Retry Download
-                </button>
-              )}
+              <button
+                onClick={() => setShowHidden((v) => !v)}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors border ${
+                  showHidden
+                    ? 'bg-white/10 border-white/20 text-white'
+                    : 'border-white/10 text-[var(--color-text-muted)] hover:text-white hover:border-white/20'
+                }`}
+              >
+                {showHidden ? <EyeOff size={16} /> : <Eye size={16} />}
+                {showHidden ? 'Hide hidden' : 'Show hidden'}
+              </button>
               {assignablePeople.length > 1 && (
                 <button
                   onClick={() => {
@@ -181,7 +180,7 @@ export function PeoplePage() {
               )}
               <button
                 onClick={handleScanFaces}
-                disabled={scanning || !modelsReady}
+                disabled={scanning}
                 className="flex items-center gap-2 rounded-xl bg-[var(--color-primary)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--color-primary)]/90 transition-colors disabled:opacity-50"
               >
                 {scanning ? (
@@ -194,24 +193,6 @@ export function PeoplePage() {
             </div>
           </div>
 
-          {modelError && (
-            <div className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 flex items-start gap-3">
-              <AlertCircle size={16} className="shrink-0 mt-0.5 text-red-400" />
-              <div className="text-sm text-red-200">
-                <p className="font-semibold mb-0.5">Model download failed</p>
-                <p className="text-red-300/80">{modelError}</p>
-              </div>
-            </div>
-          )}
-
-          {modelsLoading && !modelsReady && (
-            <div className="mt-4 rounded-xl border border-[var(--color-primary)]/20 bg-[var(--color-primary)]/5 px-4 py-3 flex items-center gap-3">
-              <Loader2 size={16} className="animate-spin text-[var(--color-primary)]" />
-              <span className="text-sm text-[var(--color-text-muted)]">
-                Downloading face AI models (~16 MB). This may take a moment...
-              </span>
-            </div>
-          )}
         </div>
 
         {loading ? (
@@ -227,25 +208,19 @@ export function PeoplePage() {
             <p className="text-sm text-[var(--color-text-muted)] max-w-md">
               Click "Scan Folder" to select a photo folder. The AI will detect faces, group them by person, and let you name each one.
             </p>
-            {!modelsReady && !modelError && (
-              <p className="text-xs text-[var(--color-text-muted)]/60">
-                Initializing face detection models...
-              </p>
-            )}
-            {modelsReady && (
-              <button
-                onClick={handleScanFaces}
-                className="flex items-center gap-2 bg-[var(--color-primary)] text-white font-medium px-5 py-2.5 rounded-xl hover:bg-[var(--color-primary)]/90 interactive shadow-lg shadow-[var(--color-primary)]/20"
-              >
-                <FolderOpen size={16} />
-                Select Folder & Scan
-              </button>
-            )}
+            <button
+              onClick={handleScanFaces}
+              className="flex items-center gap-2 bg-[var(--color-primary)] text-white font-medium px-5 py-2.5 rounded-xl hover:bg-[var(--color-primary)]/90 interactive shadow-lg shadow-[var(--color-primary)]/20"
+            >
+              <FolderOpen size={16} />
+              Select Folder & Scan
+            </button>
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {assignablePeople.map((person, i) => {
               const isSelected = selectedIds.includes(person.id);
+              const isHidden = person.hidden === true;
               return (
                 <motion.button
                   key={person.id}
@@ -253,22 +228,73 @@ export function PeoplePage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.03 }}
                   onClick={() => handlePersonClick(person.id)}
-                  className={`glass-panel rounded-2xl p-5 text-left transition-all group interactive ${
-                    isSelectMode && isSelected
-                      ? 'border-[var(--color-primary)]/70 bg-white/[0.08] shadow-lg ring-1 ring-[var(--color-primary)]/25'
-                      : 'hover:bg-white/[0.06]'
+                  className={`glass-panel rounded-2xl p-5 text-left transition-all group interactive relative ${
+                    isHidden
+                      ? 'opacity-40'
+                      : isSelectMode && isSelected
+                        ? 'border-[var(--color-primary)]/70 bg-white/[0.08] shadow-lg ring-1 ring-[var(--color-primary)]/25'
+                        : 'hover:bg-white/[0.06]'
                   }`}
                 >
+                  {!isSelectMode && !isHidden && (
+                    <>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setHideConfirmTarget(person); }}
+                        className="absolute top-3 right-12 w-7 h-7 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 hover:bg-black/60 z-10"
+                        title="Hide"
+                      >
+                        <EyeOff size={12} className="text-white" />
+                      </button>
+                      <button
+                        onClick={(e) => handleRenameClick(e, person)}
+                        className="absolute top-3 right-3 w-7 h-7 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 hover:bg-black/60 z-10"
+                        title="Rename"
+                      >
+                        <Pencil size={12} className="text-white" />
+                      </button>
+                    </>
+                  )}
+                  {!isSelectMode && isHidden && (
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          await unhidePerson(person.id);
+                          bumpFaceVersion();
+                          addToast({ message: `"${person.name}" is now visible.`, type: 'success' });
+                        } catch (err) {
+                          const msg = err instanceof Error ? err.message : String(err);
+                          addToast({ message: `Failed to unhide: ${msg}`, type: 'error' });
+                        }
+                      }}
+                      className="absolute top-3 right-3 w-7 h-7 rounded-full bg-[var(--color-primary)]/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 hover:bg-[var(--color-primary)]/80 z-10"
+                      title="Unhide"
+                    >
+                      <Eye size={12} className="text-white" />
+                    </button>
+                  )}
                   <div className="flex items-center gap-4">
                     <div className="w-16 h-16 rounded-full bg-[var(--color-primary)]/15 flex items-center justify-center text-[var(--color-primary)] shrink-0 overflow-hidden">
-                      {person.thumbnailDataUrl ? (
-                        <img src={person.thumbnailDataUrl} alt={person.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <User size={28} strokeWidth={1.5} />
-                      )}
+                      {(() => {
+                        const thumbUrl = person.thumbnailPath
+                          ? convertFileSrc(person.thumbnailPath)
+                          : person.thumbnailDataUrl;
+                        return thumbUrl ? (
+                          <img src={thumbUrl} alt={person.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <User size={28} strokeWidth={1.5} />
+                        );
+                      })()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-base font-semibold text-white truncate">{person.name}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-semibold text-white truncate">{person.name}</h3>
+                        {isHidden && (
+                          <span className="text-[10px] font-medium text-[var(--color-text-muted)] bg-white/10 px-1.5 py-0.5 rounded">
+                            Hidden
+                          </span>
+                        )}
+                      </div>
                       <p className="text-sm text-[var(--color-text-muted)]">
                         {person.faceCount} {person.faceCount === 1 ? 'photo' : 'photos'}
                       </p>
@@ -332,6 +358,35 @@ export function PeoplePage() {
         onClose={() => setMergeDialogOpen(false)}
         selectedPeople={selectedPeople}
         onMerged={handleMerged}
+      />
+
+      <RenamePersonDialog
+        open={renameDialogOpen}
+        onClose={() => { setRenameDialogOpen(false); setRenameTarget(null); }}
+        person={renameTarget}
+        onRenamed={handleRenamed}
+      />
+
+      <ConfirmDialog
+        open={hideConfirmTarget !== null}
+        title={`Hide "${hideConfirmTarget?.name ?? ''}"?`}
+        message={`Their photos won't be deleted — only the person cluster will be hidden. You can unhide them later by toggling "Show hidden".`}
+        confirmLabel="Hide"
+        danger
+        onConfirm={async () => {
+          if (hideConfirmTarget) {
+            try {
+              await hidePerson(hideConfirmTarget.id);
+              bumpFaceVersion();
+              addToast({ message: `"${hideConfirmTarget.name}" hidden.`, type: 'success' });
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              addToast({ message: `Failed to hide: ${msg}`, type: 'error' });
+            }
+          }
+          setHideConfirmTarget(null);
+        }}
+        onCancel={() => setHideConfirmTarget(null)}
       />
     </div>
   );
