@@ -59,6 +59,7 @@ export function Lightbox({ photos, index, onClose, onPrev, onNext }: Props) {
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const [containerDims, setContainerDims] = useState<{ width: number; height: number } | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  const zoomContainerRef = useRef<HTMLDivElement>(null);
 
   const { paths: favPaths, toggle: toggleFavorite, loadFavorites } = useFavoritesStore();
   const addToast = useToastStore((s) => s.addToast);
@@ -121,11 +122,18 @@ export function Lightbox({ photos, index, onClose, onPrev, onNext }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const handleWheel = (e: React.WheelEvent) => {
-    e.stopPropagation();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setScale((s) => Math.max(0.5, Math.min(5, s + delta)));
-  };
+  // Native non-passive wheel listener for zoom (React's onWheel is passive by default)
+  useEffect(() => {
+    const el = zoomContainerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setScale((s) => Math.max(0.5, Math.min(5, s + delta)));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (scale <= 1) return;
@@ -356,8 +364,8 @@ export function Lightbox({ photos, index, onClose, onPrev, onNext }: Props) {
 
       {/* Image/Video with zoom & pan */}
       <div
+        ref={zoomContainerRef}
         onClick={(e) => e.stopPropagation()}
-        onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onDoubleClick={handleDoubleClick}
         className={`overflow-hidden select-none transition-all ${

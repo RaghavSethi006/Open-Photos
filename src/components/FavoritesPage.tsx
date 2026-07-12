@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { open } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { FolderOpen, Loader2, Star } from 'lucide-react';
-import { listPhotos, isTauriRuntime, type PhotoEntry } from '../lib/tauri';
+import { listPhotos, ensureThumbnails, isTauriRuntime, type PhotoEntry } from '../lib/tauri';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useFavoritesStore } from '../store/useFavoritesStore';
 import { PhotoTile, type LayoutPhoto } from './PhotoTile';
@@ -48,6 +48,7 @@ export function FavoritesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [thumbnailMap, setThumbnailMap] = useState<Map<string, string>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1000);
 
@@ -60,26 +61,37 @@ export function FavoritesPage() {
     return () => ro.disconnect();
   }, []);
 
-  useEffect(() => {
-    if (defaultFolder && !folder) {
-      setFolder(defaultFolder);
-      loadPhotos(defaultFolder);
-    }
-  }, [defaultFolder]);
-
-  const loadPhotos = async (dir: string) => {
+  const loadPhotos = useCallback(async (dir: string) => {
     setLoading(true);
     setError(null);
     setAllEntries([]);
     try {
       const entries = await listPhotos(dir);
-      setAllEntries(entries.filter((e) => !e.isFolder));
+      const photoEntries = entries.filter((e) => !e.isFolder);
+      setAllEntries(photoEntries);
+      const paths = photoEntries.map((e) => e.path);
+      if (paths.length > 0) {
+        ensureThumbnails(paths, 320).then((thumbPaths) => {
+          const map = new Map<string, string>();
+          for (let i = 0; i < paths.length; i++) {
+            if (thumbPaths[i]) map.set(paths[i], thumbPaths[i]);
+          }
+          setThumbnailMap(map);
+        }).catch(() => {});
+      }
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (defaultFolder && !folder) {
+      setFolder(defaultFolder);
+      loadPhotos(defaultFolder);
+    }
+  }, [defaultFolder, loadPhotos]);
 
   const handleBrowse = async () => {
     try {
@@ -202,7 +214,8 @@ export function FavoritesPage() {
                         <div key={rowIdx} className="flex" style={{ gap: GRID_GAP }}>
                           {justified.map((photo, i) => (
                             <PhotoTile key={photo.path} photo={photo} isSelected={false} selectionMode={false}
-                              onOpen={() => setLightboxIndex(rowOffset + i)} onToggleSelect={() => {}} onSelectClick={() => {}} />
+                              onOpen={() => setLightboxIndex(rowOffset + i)} onToggleSelect={() => {}} onSelectClick={() => {}}
+                              thumbnailSrc={thumbnailMap.get(photo.path)} />
                           ))}
                         </div>
                       );

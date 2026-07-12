@@ -496,7 +496,7 @@ export function DuplicatesPage() {
             <div className="flex flex-col gap-4">
               {duplicateSets.map((set, setIdx) => {
                 const allFiles = [set.original, ...set.duplicates];
-                const keepPath = keepFiles[set.hash];
+                const keepPath = keepFiles[set.hash] ?? set.original.path;
 
                 return (
                   <div key={set.hash} className="glass-panel rounded-2xl p-5 border border-white/10 flex flex-col gap-4">

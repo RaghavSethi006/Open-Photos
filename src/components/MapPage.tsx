@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { FolderOpen, Loader2, MapPin, Navigation } from 'lucide-react';
@@ -37,14 +37,7 @@ export function MapPage() {
   const mapInstance = useRef<L.Map | null>(null);
   const markersRef = useRef<L.MarkerClusterGroup | null>(null);
 
-  useEffect(() => {
-    if (defaultFolder && !folder) {
-      setFolder(defaultFolder);
-      loadPhotos(defaultFolder);
-    }
-  }, [defaultFolder]);
-
-  const loadPhotos = async (dir: string) => {
+  const loadPhotos = useCallback(async (dir: string) => {
     setLoading(true);
     setError(null);
     setAllEntries([]);
@@ -56,7 +49,14 @@ export function MapPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (defaultFolder && !folder) {
+      setFolder(defaultFolder);
+      loadPhotos(defaultFolder);
+    }
+  }, [defaultFolder, loadPhotos]);
 
   const handleBrowse = async () => {
     try {
@@ -70,56 +70,86 @@ export function MapPage() {
     }
   };
 
-  // Scan GPS for all photos
+  // Scan GPS for all photos — parallel batch with controlled concurrency
   useEffect(() => {
     if (allEntries.length === 0) return;
     let cancelled = false;
     setScanningGps(true);
-    const geo: GeoPhoto[] = [];
-    let done = 0;
-    const batch = async () => {
-      for (const entry of allEntries) {
-        if (cancelled) return;
-        try {
-          const meta = await getPhotoMetadata(entry.path);
-          if (meta.gpsLat && meta.gpsLng) {
-            const lat = meta.gpsLatRef === 'S' ? -meta.gpsLat : meta.gpsLat;
-            const lng = meta.gpsLngRef === 'W' ? -meta.gpsLng : meta.gpsLng;
-            geo.push({
-              path: entry.path,
-              name: entry.name,
-              lat,
-              lng,
-              src: isTauriRuntime() ? convertFileSrc(entry.path) : entry.path,
-            });
+
+    async function processEntry(entry: PhotoEntry): Promise<GeoPhoto | null> {
+      if (cancelled) return null;
+      try {
+        const meta = await getPhotoMetadata(entry.path);
+        if (meta.gpsLat && meta.gpsLng) {
+          const lat = meta.gpsLatRef === 'S' ? -meta.gpsLat : meta.gpsLat;
+          const lng = meta.gpsLngRef === 'W' ? -meta.gpsLng : meta.gpsLng;
+          return {
+            path: entry.path,
+            name: entry.name,
+            lat,
+            lng,
+            src: isTauriRuntime() ? convertFileSrc(entry.path) : entry.path,
+          } as GeoPhoto;
+        }
+      } catch { /* skip */ }
+      return null;
+    }
+
+    async function runBatches() {
+      const concurrency = 8;
+      let index = 0;
+
+      const results: GeoPhoto[] = [];
+      let done = 0;
+
+      const workers = Array(concurrency).fill(null).map(async () => {
+        while (index < allEntries.length && !cancelled) {
+          const i = index++;
+          const r = await processEntry(allEntries[i]);
+          if (r) results.push(r);
+          done++;
+          if (!cancelled && done % 20 === 0) {
+            setGeoPhotos([...results]);
           }
-        } catch { /* skip */ }
-        done++;
-        if (done % 20 === 0 && !cancelled) setGeoPhotos([...geo]);
-      }
+        }
+      });
+
+      await Promise.all(workers);
+
       if (!cancelled) {
-        setGeoPhotos(geo);
+        setGeoPhotos(results);
         setScanningGps(false);
       }
-    };
-    batch();
+    }
+
+    runBatches();
     return () => { cancelled = true; };
   }, [allEntries]);
 
   // Initialize map
   useEffect(() => {
-    if (!mapRef.current || mapInstance.current) return;
-    const map = L.map(mapRef.current, {
-      center: [20, 0],
-      zoom: 2,
-      zoomControl: true,
-      attributionControl: false,
-    });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-    }).addTo(map);
-    mapInstance.current = map;
-    return () => { map.remove(); mapInstance.current = null; };
+    if (mapInstance.current) return;
+    let map: L.Map | null = null;
+    const initMap = () => {
+      if (!mapRef.current || mapInstance.current) return;
+      map = L.map(mapRef.current, {
+        center: [20, 0],
+        zoom: 2,
+        zoomControl: true,
+        attributionControl: false,
+      });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+      }).addTo(map);
+      mapInstance.current = map;
+    };
+    requestAnimationFrame(initMap);
+    return () => {
+      if (map) {
+        map.remove();
+        mapInstance.current = null;
+      }
+    };
   }, []);
 
   // Update markers when geoPhotos change

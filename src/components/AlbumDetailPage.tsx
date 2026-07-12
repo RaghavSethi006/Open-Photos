@@ -284,9 +284,16 @@ export function AlbumDetailPage() {
         {/* Zero-gap justified collage */}
         {!loading && rows.length > 0 && (
           <div className="p-0">
-            {rows.map((row, rowIdx) => {
-              const globalOffset = rows.slice(0, rowIdx).reduce((s, r) => s + r.length, 0);
-              return (
+            {(() => {
+              let cumulativeOffset = 0;
+              const rowsWithOffset = rows.map((row) => {
+                const offset = cumulativeOffset;
+                cumulativeOffset += row.length;
+                return { row, offset };
+              });
+              return rowsWithOffset.map(({ row, offset }, rowIdx) => {
+                const globalOffset = offset;
+                return (
                 <div key={rowIdx} className="flex" style={{ gap: ZERO_GAP }}>
                   {row.map((photo, i) => (
                     <AlbumTile
@@ -298,7 +305,8 @@ export function AlbumDetailPage() {
                   ))}
                 </div>
               );
-            })}
+            });
+          })()}
           </div>
         )}
       </div>

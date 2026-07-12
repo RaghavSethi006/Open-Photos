@@ -114,7 +114,7 @@ fn duplicate_file_from_path(path: &Path) -> Result<DuplicateFile, String> {
         .modified()
         .and_then(|t| {
             t.duration_since(SystemTime::UNIX_EPOCH)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                .map_err(|e| std::io::Error::other(e.to_string()))
         })
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);

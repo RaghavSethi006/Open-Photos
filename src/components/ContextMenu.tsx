@@ -19,12 +19,16 @@ interface Props {
 export function ContextMenu({ x, y, items, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [menuHeight, setMenuHeight] = useState(0);
+  const [menuWidth, setMenuWidth] = useState(0);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
   const combinedRef = useCallback((node: HTMLDivElement | null) => {
     (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
-    if (node) setMenuHeight(node.offsetHeight);
+    if (node) {
+      setMenuHeight(node.offsetHeight);
+      setMenuWidth(node.offsetWidth);
+    }
   }, []);
 
   useEffect(() => {
@@ -44,7 +48,7 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
     };
   }, []);
 
-  const adjustedX = Math.min(x, window.innerWidth - 200);
+  const adjustedX = Math.min(x, window.innerWidth - (menuWidth || 200) - 16);
   const estimatedHeight = menuHeight || items.length * 40;
   const adjustedY = Math.min(y, window.innerHeight - estimatedHeight);
 

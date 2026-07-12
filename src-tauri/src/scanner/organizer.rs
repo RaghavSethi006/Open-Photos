@@ -150,7 +150,7 @@ pub fn organize_media(
             }
         }
 
-        if summary.scanned % 50 == 0 {
+        if summary.scanned.is_multiple_of(50) {
             let current_dir = path
                 .parent()
                 .unwrap_or_else(|| Path::new(""))
