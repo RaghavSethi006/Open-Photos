@@ -7,20 +7,23 @@ export function useGlobalShortcuts() {
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+      const target = e.target as HTMLElement;
+      const tag = target?.tagName;
+      const isEditable = target?.isContentEditable;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || isEditable) {
         if (e.key === 'Escape') {
-          (e.target as HTMLElement).blur();
+          target.blur();
         }
         return;
       }
 
       switch (e.key) {
-        case '/':
+        case '/': {
           e.preventDefault();
           const search = document.querySelector<HTMLInputElement>('input[type="text"][placeholder*="Search"]');
           search?.focus();
           break;
+        }
         case 'Escape':
           setSearchQuery('');
           break;

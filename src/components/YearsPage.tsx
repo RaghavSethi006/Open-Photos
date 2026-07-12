@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { open } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -15,14 +15,7 @@ export function YearsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (defaultFolder && !folder) {
-      setFolder(defaultFolder);
-      loadPhotos(defaultFolder);
-    }
-  }, [defaultFolder]);
-
-  const loadPhotos = async (dir: string) => {
+  const loadPhotos = useCallback(async (dir: string) => {
     setLoading(true);
     setError(null);
     setAllEntries([]);
@@ -34,7 +27,14 @@ export function YearsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (defaultFolder && !folder) {
+      setFolder(defaultFolder);
+      loadPhotos(defaultFolder);
+    }
+  }, [defaultFolder, loadPhotos]);
 
   const handleBrowse = async () => {
     try {

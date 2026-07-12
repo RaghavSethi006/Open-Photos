@@ -33,6 +33,7 @@ function App() {
   useEffect(() => {
     document.documentElement.classList.remove('light', 'dark');
     document.documentElement.classList.add(theme);
+    document.documentElement.style.colorScheme = theme;
   }, [theme]);
 
   // Apply startup view on mount only — reading from store directly to avoid re-running on setting change
@@ -46,22 +47,41 @@ function App() {
     }
   }, [setCurrentView]);
 
-  // Run trash cleanup on mount — read from store inside the effect to avoid stale snapshot
+  // Run trash cleanup on mount — defer via requestIdleCallback so initial render is not blocked
   useEffect(() => {
     const { trashFolder, trashRetentionDays } = useSettingsStore.getState();
     if (trashFolder.trim()) {
-      cleanupTrashFolder(trashFolder, trashRetentionDays).catch(() => {});
+      const work = () => {
+        cleanupTrashFolder(trashFolder, trashRetentionDays).catch(() => {});
+      };
+      if ('requestIdleCallback' in window) {
+        const id = requestIdleCallback(work, { timeout: 5000 });
+        return () => cancelIdleCallback(id);
+      } else {
+        setTimeout(work, 2000);
+      }
     }
   }, []);
 
   // Setup Tauri event listeners
   const unlistenRef = useRef<() => void>(undefined);
   useEffect(() => {
+    let cancelled = false;
+    let cleanupFn: (() => void) | undefined;
+
     setupTauriListeners().then((cleanup) => {
-      unlistenRef.current = cleanup;
+      if (cancelled) {
+        cleanup();
+      } else {
+        cleanupFn = cleanup;
+        unlistenRef.current = cleanup;
+      }
     });
+
     return () => {
-      unlistenRef.current?.();
+      cancelled = true;
+      cleanupFn?.();
+      unlistenRef.current = undefined;
     };
   }, []);
 

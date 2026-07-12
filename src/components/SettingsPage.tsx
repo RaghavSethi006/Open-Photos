@@ -18,6 +18,7 @@ import {
 import { useState } from 'react';
 import { ACCENT_COLORS, useSettingsStore, type AccentColor } from '../store/useSettingsStore';
 import { useSavedPathsStore } from '../store/useSavedPathsStore';
+import { useStore } from '../store/useStore';
 import { clusterFaces } from '../lib/tauri';
 import { useToastStore } from '../store/useToastStore';
 
@@ -34,6 +35,7 @@ export function SettingsPage() {
     setReclustering(true);
     try {
       await clusterFaces(settings.faceSimilarityThreshold);
+      useStore.getState().bumpFaceVersion();
       addToast({
         message: 'Faces successfully re-clustered with the new threshold.',
         type: 'success',
