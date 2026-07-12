@@ -3,6 +3,7 @@ pub mod duplicates;
 pub mod faces;
 pub mod favorites;
 pub mod file;
+pub mod index;
 pub mod metadata;
 pub mod photos;
 pub mod scan;

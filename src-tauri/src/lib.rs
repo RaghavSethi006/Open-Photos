@@ -1,7 +1,9 @@
 pub mod ai;
 pub mod commands;
+pub mod db;
 pub mod metadata;
 pub mod scanner;
+pub mod thumbs;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -43,9 +45,16 @@ pub fn run() {
             commands::faces::rename_person,
             commands::faces::merge_people,
             commands::faces::delete_person,
+            commands::faces::hide_person,
+            commands::faces::unhide_person,
             commands::faces::reject_faces,
             commands::faces::get_person_photos,
             commands::faces::get_photo_faces,
+            commands::index::index_folder,
+            commands::index::browse_folder,
+            commands::index::search_photos,
+            thumbs::get_thumbnail_path,
+            thumbs::ensure_thumbnails,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
