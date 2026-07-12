@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import type { SearchFilters } from '../lib/tauri';
 
 interface StoreState {
   isSidebarOpen: boolean;
@@ -21,30 +23,54 @@ interface StoreState {
 
   sortBy: 'newest' | 'oldest' | 'name-asc' | 'name-desc' | 'largest';
   setSortBy: (sort: StoreState['sortBy']) => void;
+
+  filters: SearchFilters;
+  setFilters: (f: Partial<SearchFilters>) => void;
+
+  faceVersion: number;
+  bumpFaceVersion: () => void;
 }
 
-export const useStore = create<StoreState>((set) => ({
-  isSidebarOpen: true,
-  toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+export const useStore = create<StoreState>()(
+  persist(
+    (set) => ({
+      isSidebarOpen: true,
+      toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
 
-  currentView: 'scan',
-  setCurrentView: (view) => set({ currentView: view }),
+      currentView: 'scan',
+      setCurrentView: (view) => set({ currentView: view }),
 
-  selectedAlbumId: null,
-  setSelectedAlbumId: (id) => set({ selectedAlbumId: id }),
+      selectedAlbumId: null,
+      setSelectedAlbumId: (id) => set({ selectedAlbumId: id }),
 
-  selectedPersonId: null,
-  setSelectedPersonId: (id) => set({ selectedPersonId: id }),
+      selectedPersonId: null,
+      setSelectedPersonId: (id) => set({ selectedPersonId: id }),
 
-  pendingFolder: null,
-  setPendingFolder: (path) => set({ pendingFolder: path }),
+      pendingFolder: null,
+      setPendingFolder: (path) => set({ pendingFolder: path }),
 
-  searchQuery: '',
-  setSearchQuery: (searchQuery) => set({ searchQuery }),
+      searchQuery: '',
+      setSearchQuery: (searchQuery) => set({ searchQuery }),
 
-  sortBy: 'newest',
-  setSortBy: (sortBy) => set({ sortBy }),
-}));
+      sortBy: 'newest',
+      setSortBy: (sortBy) => set({ sortBy }),
+
+      filters: {},
+      setFilters: (f) => set((state) => ({ filters: { ...state.filters, ...f } })),
+
+      faceVersion: 0,
+      bumpFaceVersion: () => set((state) => ({ faceVersion: state.faceVersion + 1 })),
+    }),
+    {
+      name: 'lgp-ui-state',
+      partialize: (s) => ({
+        isSidebarOpen: s.isSidebarOpen,
+        currentView: s.currentView,
+        sortBy: s.sortBy,
+      }),
+    },
+  ),
+);
 
 interface ProgressState {
   isScanning: boolean;

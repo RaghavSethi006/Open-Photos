@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
-import { Search, LayoutGrid, LayoutList, Map as MapIcon, ArrowDownUp, Check } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, LayoutGrid, LayoutList, Map as MapIcon, ArrowDownUp, Check, SlidersHorizontal, X } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const sortOptions = [
   { value: 'newest', label: 'Newest first' },
@@ -12,9 +12,35 @@ const sortOptions = [
 ] as const;
 
 export function Topbar() {
-  const { currentView, setCurrentView, searchQuery, setSearchQuery, sortBy, setSortBy } = useStore();
+  const { currentView, setCurrentView, searchQuery, setSearchQuery, sortBy, setSortBy, filters, setFilters } = useStore();
   const [sortOpen, setSortOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!filterOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node) && !(e.target as HTMLElement).closest('.filter-btn')) {
+        setFilterOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [filterOpen]);
+
+  const clearFilters = useCallback(() => {
+    setFilters({
+      cameraMake: undefined,
+      cameraModel: undefined,
+      dateFrom: undefined,
+      dateTo: undefined,
+      hasGps: undefined,
+      isVideo: undefined,
+    });
+  }, [setFilters]);
+
+  const hasActiveFilters = !!(filters.cameraMake || filters.cameraModel || filters.dateFrom || filters.dateTo || filters.hasGps !== undefined || filters.isVideo !== undefined);
 
   useEffect(() => {
     if (!sortOpen) return;
@@ -64,7 +90,109 @@ export function Topbar() {
         </div>
       </div>
 
-      <div className="flex items-center gap-4 titlebar-nodrag">
+      <div className="flex items-center gap-3 titlebar-nodrag">
+        {/* Filter button */}
+        <div className="relative filter-btn">
+          <button
+            onClick={() => setFilterOpen(!filterOpen)}
+            className={`p-2 rounded-lg transition-colors ${
+              hasActiveFilters ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)]' : 'bg-white/5 text-[var(--color-text-muted)] hover:text-white border border-white/10'
+            }`}
+            title="Filters"
+          >
+            <SlidersHorizontal size={16} />
+          </button>
+          <AnimatePresence>
+            {filterOpen && (
+              <motion.div
+                ref={filterRef}
+                initial={{ opacity: 0, y: -4, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.95 }}
+                className="absolute right-0 top-full mt-1 w-72 glass-panel rounded-xl p-3 z-50 shadow-2xl border-white/10"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-semibold text-white uppercase tracking-wider">Filters</span>
+                  {hasActiveFilters && (
+                    <button onClick={clearFilters} className="text-xs text-[var(--color-text-muted)] hover:text-white flex items-center gap-1">
+                      <X size={12} /> Clear
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-2.5">
+                  <div>
+                    <label className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider">Camera Make</label>
+                    <input
+                      type="text"
+                      value={filters.cameraMake ?? ''}
+                      onChange={(e) => setFilters({ cameraMake: e.target.value || undefined })}
+                      placeholder="e.g. Apple, Canon"
+                      className="w-full mt-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider">Camera Model</label>
+                    <input
+                      type="text"
+                      value={filters.cameraModel ?? ''}
+                      onChange={(e) => setFilters({ cameraModel: e.target.value || undefined })}
+                      placeholder="e.g. iPhone 15 Pro"
+                      className="w-full mt-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider">From</label>
+                      <input
+                        type="date"
+                        value={filters.dateFrom ? new Date(filters.dateFrom).toISOString().split('T')[0] : ''}
+                        onChange={(e) => setFilters({ dateFrom: e.target.value ? new Date(e.target.value).getTime() : undefined })}
+                        className="w-full mt-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] [color-scheme:dark]"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider">To</label>
+                      <input
+                        type="date"
+                        value={filters.dateTo ? new Date(filters.dateTo).toISOString().split('T')[0] : ''}
+                        onChange={(e) => setFilters({ dateTo: e.target.value ? new Date(e.target.value).getTime() : undefined })}
+                        className="w-full mt-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] [color-scheme:dark]"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <label className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!filters.hasGps}
+                        onChange={(e) => setFilters({ hasGps: e.target.checked || undefined })}
+                        className="rounded border-white/20 bg-white/5"
+                      />
+                      Has Location
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] cursor-pointer">
+                      <select
+                        value={filters.isVideo === undefined ? '' : filters.isVideo ? 'videos' : 'photos'}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFilters({ isVideo: val === '' ? undefined : val === 'videos' ? true : false });
+                        }}
+                        className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+                      >
+                        <option value="">All</option>
+                        <option value="photos">Photos only</option>
+                        <option value="videos">Videos only</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
         <div className="flex items-center bg-white/5 rounded-lg p-1 border border-white/10">
           <ViewButton 
             active={currentView === 'timeline'} 

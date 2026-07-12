@@ -12,6 +12,7 @@ interface FavoritesState {
   loadFavorites: () => Promise<void>;
   toggle: (path: string) => Promise<void>;
   isFavorite: (path: string) => boolean;
+  remove: (path: string) => Promise<void>;
 }
 
 export const useFavoritesStore = create<FavoritesState>((set, get) => ({
@@ -51,5 +52,18 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
 
   isFavorite: (path: string) => {
     return get().paths.has(path);
+  },
+
+  remove: async (path: string) => {
+    try {
+      await removeFavoriteApi(path);
+      set((s) => {
+        const next = new Set(s.paths);
+        next.delete(path);
+        return { paths: next };
+      });
+    } catch (e) {
+      console.error('Failed to remove favorite:', e);
+    }
   },
 }));

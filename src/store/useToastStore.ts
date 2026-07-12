@@ -20,15 +20,10 @@ export const useToastStore = create<ToastState>((set, get) => ({
   toasts: [],
   addToast: (toast) => {
     const id = `toast-${++counter}`;
-    set((state) => ({ toasts: [...state.toasts, { ...toast, id }] }));
     const timerId = window.setTimeout(() => {
-      const current = get().toasts.find((t) => t.id === id);
-      if (!current) return;
       set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
     }, 4000);
-    set((state) => ({
-      toasts: state.toasts.map((t) => (t.id === id ? { ...t, _timerId: timerId } : t)),
-    }));
+    set((state) => ({ toasts: [...state.toasts, { ...toast, id, _timerId: timerId }] }));
   },
   removeToast: (id) => {
     const current = get().toasts.find((t) => t.id === id);

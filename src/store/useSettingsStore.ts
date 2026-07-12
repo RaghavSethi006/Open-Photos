@@ -64,6 +64,13 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'lgp-settings',
+      version: 2,
+      migrate: (persisted: any, version: number) => {
+        if (version < 2) {
+          return { ...persisted, faceModelSize: DEFAULTS.faceModelSize, faceSimilarityThreshold: DEFAULTS.faceSimilarityThreshold };
+        }
+        return persisted;
+      },
     },
   ),
 );
