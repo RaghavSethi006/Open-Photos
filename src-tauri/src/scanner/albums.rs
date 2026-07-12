@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -40,20 +40,9 @@ fn write_albums(albums: &[Album]) -> Result<(), String> {
     write_albums_to_path(&path, albums)
 }
 
-fn write_albums_to_path(path: &PathBuf, albums: &[Album]) -> Result<(), String> {
+fn write_albums_to_path(path: &Path, albums: &[Album]) -> Result<(), String> {
     let content = serde_json::to_string_pretty(albums).map_err(|e| e.to_string())?;
-    atomic_write_string(path, &content)
-}
-
-fn atomic_write_string(path: &PathBuf, content: &str) -> Result<(), String> {
-    let temp_path = path.with_extension("json.tmp");
-    fs::write(&temp_path, content).map_err(|e| e.to_string())?;
-
-    if path.exists() {
-        fs::remove_file(path).map_err(|e| e.to_string())?;
-    }
-
-    fs::rename(&temp_path, path).map_err(|e| e.to_string())
+    crate::scanner::atomic_write_string(path, &content)
 }
 
 pub fn create_album(

@@ -57,14 +57,7 @@ fn write_manifest(trash: &Path, manifest: &Manifest) -> Result<(), String> {
 }
 
 fn atomic_write_string(path: &Path, content: &str) -> Result<(), String> {
-    let temp_path = path.with_extension("json.tmp");
-    fs::write(&temp_path, content).map_err(|e| e.to_string())?;
-
-    if path.exists() {
-        fs::remove_file(path).map_err(|e| e.to_string())?;
-    }
-
-    fs::rename(&temp_path, path).map_err(|e| e.to_string())
+    crate::scanner::atomic_write_string(path, content)
 }
 
 fn timestamp_prefix() -> String {

@@ -35,7 +35,7 @@ fn write_favorites(paths: &HashSet<String>) -> Result<(), String> {
     sorted.sort();
     let favs = Favorites { paths: sorted };
     let content = serde_json::to_string_pretty(&favs).map_err(|e| e.to_string())?;
-    fs::write(&path, content).map_err(|e| e.to_string())
+    crate::scanner::atomic_write_string(&path, &content)
 }
 
 pub fn add_favorite(path: String) -> Result<(), String> {
