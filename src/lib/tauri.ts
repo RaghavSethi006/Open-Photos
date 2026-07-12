@@ -271,6 +271,56 @@ export async function listPhotos(folder: string, skipHiddenFiles = useSettingsSt
   return invoke('list_photos', { folder, skipHiddenFiles });
 }
 
+// ─── Database Index ──────────────────────────────────────────────────────────
+
+export interface IndexedPhoto {
+  path: string;
+  name: string;
+  sizeBytes: number;
+  modifiedMs: number;
+  dateTakenMs: number | null;
+  width: number | null;
+  height: number | null;
+  cameraMake: string | null;
+  cameraModel: string | null;
+  gpsLat: number | null;
+  gpsLng: number | null;
+  isVideo: boolean;
+}
+
+export interface SearchFilters {
+  cameraMake?: string;
+  cameraModel?: string;
+  dateFrom?: number;
+  dateTo?: number;
+  hasGps?: boolean;
+  isVideo?: boolean;
+  query?: string;
+}
+
+/// Walk a folder and index all photos/videos into the SQLite database.
+export async function indexFolder(folder: string): Promise<number> {
+  return invoke('index_folder', { folder });
+}
+
+/// Browse photos from an indexed folder.
+export async function browseFolder(folder: string): Promise<IndexedPhoto[]> {
+  return invoke('browse_folder', { folder });
+}
+
+/// Search indexed photos with optional filters.
+export async function searchPhotos(filters: SearchFilters): Promise<IndexedPhoto[]> {
+  return invoke('search_photos', {
+    query: filters.query ?? null,
+    cameraMake: filters.cameraMake ?? null,
+    cameraModel: filters.cameraModel ?? null,
+    dateFrom: filters.dateFrom ?? null,
+    dateTo: filters.dateTo ?? null,
+    hasGps: filters.hasGps ?? null,
+    isVideo: filters.isVideo ?? null,
+  });
+}
+
 // ─── Photo Metadata ──────────────────────────────────────────────────────────
 
 export interface PhotoMetadata {
@@ -308,6 +358,62 @@ export async function listFavorites(): Promise<string[]> {
   return invoke('list_favorites');
 }
 
+// ─── Thumbnails ────────────────────────────────────────────────────────────────
+
+/// Returns the filesystem path to a cached thumbnail for the given photo.
+/// Pass the result to `convertFileSrc()` for use in an `<img>` tag.
+/// Thumbnails are generated on first access and cached indefinitely.
+const thumbnailUrlCache = new Map<string, string>();
+const pendingThumbnails = new Map<string, Promise<string>>();
+
+export async function getThumbnailPath(path: string, maxDimension?: number): Promise<string> {
+  const key = `${path}@${maxDimension ?? 320}`;
+  const cached = thumbnailUrlCache.get(key);
+  if (cached) return cached;
+  const existing = pendingThumbnails.get(key);
+  if (existing) return existing;
+  const promise = invoke<string>('get_thumbnail_path', { path, maxDimension }).then((result) => {
+    thumbnailUrlCache.set(key, result);
+    pendingThumbnails.delete(key);
+    return result;
+  }).catch((err) => {
+    pendingThumbnails.delete(key);
+    throw err;
+  });
+  pendingThumbnails.set(key, promise);
+  return promise;
+}
+
+/// Batch-generate thumbnails for many photos at once (avoids N concurrent IPC calls).
+/// Returns the thumbnail paths in the same order as input paths.
+export async function ensureThumbnails(paths: string[], maxDimension?: number): Promise<string[]> {
+  const uncached: string[] = [];
+  const resultMap = new Map<string, string>();
+  for (const path of paths) {
+    const key = `${path}@${maxDimension ?? 320}`;
+    const cached = thumbnailUrlCache.get(key);
+    if (cached) {
+      resultMap.set(path, cached);
+    } else {
+      uncached.push(path);
+    }
+  }
+  if (uncached.length > 0) {
+    const results: string[] = await invoke('ensure_thumbnails', { paths: uncached, maxDimension });
+    for (let i = 0; i < uncached.length; i++) {
+      const key = `${uncached[i]}@${maxDimension ?? 320}`;
+      thumbnailUrlCache.set(key, results[i]);
+      resultMap.set(uncached[i], results[i]);
+    }
+  }
+  return paths.map((p) => resultMap.get(p)!);
+}
+
+export function clearThumbnailCache() {
+  thumbnailUrlCache.clear();
+  pendingThumbnails.clear();
+}
+
 // ─── File Operations ────────────────────────────────────────────────────────────
 
 export async function moveFile(source: string, destDir: string): Promise<string> {
@@ -336,6 +442,7 @@ export interface PersonInfo {
   faceCount: number;
   thumbnailPath: string;
   thumbnailDataUrl?: string | null;
+  hidden?: boolean;
 }
 
 export interface PhotoFaceInfo {
@@ -358,8 +465,8 @@ export async function clusterFaces(threshold: number): Promise<any[]> {
   return invoke('cluster_faces', { threshold });
 }
 
-export async function listPeople(): Promise<PersonInfo[]> {
-  return invoke('list_people');
+export async function listPeople(showHidden?: boolean): Promise<PersonInfo[]> {
+  return invoke('list_people', { showHidden: showHidden ?? false });
 }
 
 export async function namePerson(faceIds: string[], name: string, personId?: string): Promise<PersonInfo> {
@@ -376,6 +483,14 @@ export async function mergePeople(personIds: string[], targetName: string): Prom
 
 export async function deletePerson(personId: string): Promise<void> {
   return invoke('delete_person', { personId });
+}
+
+export async function hidePerson(personId: string): Promise<void> {
+  return invoke('hide_person', { personId });
+}
+
+export async function unhidePerson(personId: string): Promise<void> {
+  return invoke('unhide_person', { personId });
 }
 
 export async function rejectFaces(faceIds: string[]): Promise<void> {
